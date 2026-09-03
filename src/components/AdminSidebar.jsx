@@ -98,19 +98,16 @@ function AdminSidebar() {
       );
     }
   };
-  const allowedItems =
-    hasFullAccess(user?.role)
-      ? navItems
-      : navItems.filter((item) =>
-          hasSectionAccess(user?.sections || [], item.section),
-        );
+  const allowedItems = hasFullAccess(user?.role)
+    ? navItems
+    : navItems.filter((item) =>
+        hasSectionAccess(user?.sections || [], item.section),
+      );
   const mobilePrimaryItems = allowedItems.slice(0, 4);
 
   return (
     <aside className="sidebar">
-      <div className="brand">
-        <RiHotelLine /> {hotelName}
-      </div>
+      <div className="brand">{hotelName}</div>
 
       <nav className="side-nav">
         {allowedItems.map((item) => (
