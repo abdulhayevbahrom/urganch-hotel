@@ -30,15 +30,20 @@ import {
   FiPrinter,
   FiTrash2,
   FiXCircle,
+  FiRefreshCw,
 } from "react-icons/fi";
 import {
   useAddGuestServiceMutation,
   useAddGuestPaymentMutation,
+  useUpdateGuestPaymentMutation,
   useCheckoutGuestMutation,
+  useContinueGuestStayMutation,
+  useCheckoutGuestsBulkMutation,
   useDecideVipRequestMutation,
   useDeleteGuestMutation,
   useGetGuestsQuery,
   useLazyGetGuestsQuery,
+  useGetRoomsQuery,
   useGetServicesQuery,
   useGetSettingsQuery,
   useGetVipRequestsQuery,
@@ -49,6 +54,69 @@ import {
   preventInvalidAmountPaste,
 } from "../utils/numberFormat";
 import dayjs from "dayjs";
+
+const getCurrentStayDay = (checkInAt, checkoutTime = "12:00") => {
+  if (!checkInAt) return 1;
+  const [checkoutHour = 12, checkoutMinute = 0] = String(checkoutTime)
+    .split(":")
+    .map(Number);
+  const today = dayjs();
+  const isBeforeCheckout = (value) =>
+    value.hour() < checkoutHour ||
+    (value.hour() === checkoutHour && value.minute() < checkoutMinute);
+  const checkIn = dayjs(checkInAt);
+  let checkInOperationalDay = checkIn.startOf("day");
+  if (isBeforeCheckout(checkIn)) {
+    checkInOperationalDay = checkInOperationalDay.subtract(1, "day");
+  }
+  let currentOperationalDay = today.startOf("day");
+  if (isBeforeCheckout(today)) {
+    currentOperationalDay = currentOperationalDay.subtract(1, "day");
+  }
+  return Math.max(
+    currentOperationalDay.diff(checkInOperationalDay, "day") + 1,
+    1,
+  );
+};
+
+const getStayedDays = (checkInAt, checkOutAt, checkoutTime = "12:00") => {
+  if (!checkInAt || !checkOutAt) return 1;
+  const [checkoutHour = 12, checkoutMinute = 0] = String(checkoutTime)
+    .split(":")
+    .map(Number);
+  const checkIn = dayjs(checkInAt);
+  const checkOut = dayjs(checkOutAt);
+  const isBeforeCheckout = (value) =>
+    value.hour() < checkoutHour ||
+    (value.hour() === checkoutHour && value.minute() < checkoutMinute);
+  const isAtOrBeforeCheckout = (value) =>
+    value.hour() < checkoutHour ||
+    (value.hour() === checkoutHour && value.minute() <= checkoutMinute);
+  let checkInOperationalDay = checkIn.startOf("day");
+  if (isBeforeCheckout(checkIn)) {
+    checkInOperationalDay = checkInOperationalDay.subtract(1, "day");
+  }
+  let checkOutOperationalDay = checkOut.startOf("day");
+  if (isAtOrBeforeCheckout(checkOut)) {
+    checkOutOperationalDay = checkOutOperationalDay.subtract(1, "day");
+  }
+  return Math.max(
+    checkOutOperationalDay.diff(checkInOperationalDay, "day") + 1,
+    1,
+  );
+};
+
+const getDailyRateFields = (guest) => {
+  const savedRates = new Map(
+    (guest?.dailyRates || []).map((item) => [Number(item?.day), Number(item?.amount || 0)]),
+  );
+  const stayDays = Math.max(Number(guest?.stayDays || 1), 1);
+  const defaultRate = Number(guest?.dailyRate || 0);
+  return Array.from({ length: stayDays }, (_, index) => ({
+    day: index + 1,
+    amount: savedRates.has(index + 1) ? savedRates.get(index + 1) : defaultRate,
+  }));
+};
 import {
   acquireSocketConnection,
   releaseSocketConnection,
@@ -60,7 +128,6 @@ const GUESTS_PAGE_SIZE = 20;
 
 const paymentTypeOptions = [
   { label: "Naqd", value: "naqd" },
-  { label: "Click", value: "click" },
   { label: "Bank", value: "bank" },
   { label: "Karta", value: "karta" },
 ];
@@ -87,12 +154,26 @@ const normalizePhoneInput = (value) => {
 const formatMoney = (value) =>
   `${Number(value || 0).toLocaleString("uz-UZ")} so'm`;
 
+const getPayableAmount = (guest) =>
+  Math.max(
+    Number(guest?.payableAmount ?? guest?.debtAmount ?? 0),
+    0,
+  );
+
 const formatActionBy = (actionBy) => {
   const firstname = String(actionBy?.firstname || "").trim();
   const lastname = String(actionBy?.lastname || "").trim();
   const fullName = `${firstname} ${lastname}`.trim();
   if (fullName) return fullName;
   return actionBy?.login || "-";
+};
+
+const formatRoomLabel = (room) => {
+  if (!room) return "-";
+  const roomNumber = room.roomNumber || "-";
+  const korpus = room.korpus ? `${room.korpus} korpus` : "";
+  const floor = room.floor ? `${room.floor}-qavat` : "";
+  return [roomNumber, korpus, floor].filter(Boolean).join(" / ");
 };
 
 const VipRequestsPanel = memo(function VipRequestsPanel({
@@ -115,7 +196,7 @@ const VipRequestsPanel = memo(function VipRequestsPanel({
               </strong>
               <span>
                 Passport: {request.guest?.passport || "-"} | Xona:{" "}
-                {request.guest?.room?.roomNumber || "-"}
+                {formatRoomLabel(request.guest?.room)}
               </span>
             </div>
             <div className="vip-request-actions">
@@ -157,13 +238,15 @@ function GuestsPage({ tab = "active" }) {
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
   const { data: settingsData } = useGetSettingsQuery();
+  const { data: roomsData } = useGetRoomsQuery();
   const hotelSettings = settingsData?.innerData || {};
   const hotelName = hotelSettings?.hotelName || "Mehmonxona nomi";
-  const canDeleteGuest = String(user?.role || "").toLowerCase() === "manager";
+  const canDeleteGuest = true;
   const [paymentForm] = Form.useForm();
   const [serviceForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const [paymentGuest, setPaymentGuest] = useState(null);
+  const [selectedGuestIds, setSelectedGuestIds] = useState([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isMobileFilters, setIsMobileFilters] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < 900 : false,
@@ -181,8 +264,7 @@ function GuestsPage({ tab = "active" }) {
     endDate: "",
   });
 
-  const canManageVip = String(user?.role || "").toLowerCase() === "admin";
-  const shouldLoadVipRequests = canManageVip && tab === "active";
+  const shouldLoadVipRequests = tab === "active";
   const { data: vipRequestsData, refetch: refetchVipRequests } =
     useGetVipRequestsQuery("pending", {
       skip: !shouldLoadVipRequests,
@@ -211,6 +293,15 @@ function GuestsPage({ tab = "active" }) {
   const [fetchGuestsForExport, { isFetching: exportingDebtors }] =
     useLazyGetGuestsQuery();
   const shouldShowGuestsLoading = isLoading || isFetching;
+  const rooms = roomsData?.innerData || [];
+  const roomEditOptions = useMemo(
+    () =>
+      rooms.map((room) => ({
+        value: room._id,
+        label: formatRoomLabel(room),
+      })),
+    [rooms],
+  );
   const guestsPayload = guestsData?.innerData || { items: [], pagination: {} };
   const guests = guestsPayload.items || [];
   const pagination = guestsPayload.pagination || {
@@ -266,6 +357,10 @@ function GuestsPage({ tab = "active" }) {
   }, [tab]);
 
   useEffect(() => {
+    setSelectedGuestIds([]);
+  }, [tab, page, filters]);
+
+  useEffect(() => {
     if (!token) return undefined;
 
     const socket = acquireSocketConnection(token);
@@ -313,11 +408,17 @@ function GuestsPage({ tab = "active" }) {
 
   const [deleteGuest, { isLoading: deleting }] = useDeleteGuestMutation();
   const [addPayment, { isLoading: paying }] = useAddGuestPaymentMutation();
+  const [updateGuestPayment, { isLoading: updatingPayment }] =
+    useUpdateGuestPaymentMutation();
   const [addGuestService, { isLoading: savingService }] =
     useAddGuestServiceMutation();
   const [updateGuest, { isLoading: updating }] = useUpdateGuestMutation();
   const [checkoutGuest, { isLoading: checkingOut }] =
     useCheckoutGuestMutation();
+  const [continueGuestStay, { isLoading: continuingStay }] =
+    useContinueGuestStayMutation();
+  const [checkoutGuestsBulk, { isLoading: bulkCheckingOut }] =
+    useCheckoutGuestsBulkMutation();
   const [decideVipRequest, { isLoading: decidingVip }] =
     useDecideVipRequestMutation();
 
@@ -333,8 +434,15 @@ function GuestsPage({ tab = "active" }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editGuestId, setEditGuestId] = useState("");
   const [editGuestStatus, setEditGuestStatus] = useState("");
+  const [editGuestCurrentDay, setEditGuestCurrentDay] = useState(0);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyGuest, setHistoryGuest] = useState(null);
+  const [isPaymentEditModalOpen, setIsPaymentEditModalOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [paymentEditForm] = Form.useForm();
+  const [isContinueModalOpen, setIsContinueModalOpen] = useState(false);
+  const [continuingGuest, setContinuingGuest] = useState(null);
+  const [continueForm] = Form.useForm();
   const [receiptData, setReceiptData] = useState(null);
   const receiptRef = useRef(null);
   const [hotelReceiptData, setHotelReceiptData] = useState(null);
@@ -358,15 +466,42 @@ function GuestsPage({ tab = "active" }) {
   });
 
   const openPaymentModal = (guest) => {
-    const debtAmount = Number(guest?.debtAmount || 0);
-    if (!guest || debtAmount <= 0) return;
+    const payableAmount = getPayableAmount(guest);
+    if (!guest || payableAmount <= 0) return;
     setPaymentGuest(guest);
     setPaymentGuestId(guest._id);
     paymentForm.setFieldsValue({
-      amount: debtAmount,
+      amount: payableAmount,
       type: "naqd",
       note: "",
     });
+    setIsPaymentModalOpen(true);
+  };
+
+  const openBulkPaymentModal = () => {
+    const paymentGuests = activeSelectableGuests.filter(
+      (guest) =>
+        selectedGuestIds.includes(guest._id) &&
+        !guest.vip &&
+        getPayableAmount(guest) > 0,
+    );
+    if (!paymentGuests.length) {
+      toast.error("To'lov uchun qarzdor mijozlarni tanlang");
+      return;
+    }
+    const totalDebt = paymentGuests.reduce(
+      (sum, guest) => sum + getPayableAmount(guest),
+      0,
+    );
+    setPaymentGuest({
+      bulk: true,
+      guests: paymentGuests,
+      debtAmount: totalDebt,
+      firstname: `${paymentGuests.length} ta mijoz`,
+      lastname: "",
+    });
+    setPaymentGuestId("");
+    paymentForm.setFieldsValue({ amount: totalDebt, type: "naqd", note: "" });
     setIsPaymentModalOpen(true);
   };
 
@@ -397,14 +532,29 @@ function GuestsPage({ tab = "active" }) {
   const openEditModal = (guest) => {
     setEditGuestStatus(String(guest.status || ""));
     setEditGuestId(guest._id);
+    setEditGuestCurrentDay(
+      guest.status === "active"
+        ? getCurrentStayDay(
+            guest.checkInAt,
+            hotelSettings?.checkoutTime || "12:00",
+          )
+        : 0,
+    );
     editForm.setFieldsValue({
       firstname: guest.firstname || "",
       lastname: guest.lastname || "",
       passport: guest.passport || "",
       phone: guest.phone || "",
+      email: guest.email || "",
+      organization: guest.organization || "",
+      organizationInn: guest.organizationInn || "",
+      room: guest.room?._id || guest.room || undefined,
       guestType: guest.guestType || "uzb",
       dailyRate: Number(guest.dailyRate || 0),
+      dailyRates: getDailyRateFields(guest),
       stayDays: Number(guest.stayDays || 1),
+      checkInAt: guest.checkInAt ? dayjs(guest.checkInAt) : null,
+      checkOutAt: guest.checkOutAt ? dayjs(guest.checkOutAt) : null,
       bookedForAt: guest.bookedForAt ? dayjs(guest.bookedForAt) : null,
       isBlacklisted: Boolean(guest.isBlacklisted),
       note: guest.note || "",
@@ -417,7 +567,20 @@ function GuestsPage({ tab = "active" }) {
     setIsEditModalOpen(false);
     setEditGuestId("");
     setEditGuestStatus("");
+    setEditGuestCurrentDay(0);
     editForm.resetFields();
+  };
+
+  const applyBaseDailyRate = (value) => {
+    const rate = Math.max(Number(value || 0), 0);
+    const currentRates = editForm.getFieldValue("dailyRates") || [];
+    editForm.setFieldValue(
+      "dailyRates",
+      currentRates.map((item, index) => ({
+        day: Number(item?.day || index + 1),
+        amount: rate,
+      })),
+    );
   };
 
   const openHistoryModal = (guest) => {
@@ -430,16 +593,66 @@ function GuestsPage({ tab = "active" }) {
     setIsHistoryModalOpen(false);
   };
 
+  const openPaymentEditModal = (payment, index) => {
+    if (!historyGuest) return;
+    setEditingPayment({
+      index,
+      payment,
+      guestId: historyGuest._id,
+    });
+    paymentEditForm.setFieldsValue({
+      amount: Number(payment?.amount || 0),
+      type: payment?.type || "naqd",
+      note: payment?.note || "",
+    });
+    setIsPaymentEditModalOpen(true);
+  };
+
+  const closePaymentEditModal = () => {
+    setIsPaymentEditModalOpen(false);
+    setEditingPayment(null);
+    paymentEditForm.resetFields();
+  };
+
   const onPaymentSubmit = async (values) => {
     try {
-      const debtAmount = Number(paymentGuest?.debtAmount || 0);
-      if (debtAmount <= 0) {
-        toast.error("Qarzdorlik mavjud emas");
+      const payableAmount = getPayableAmount(paymentGuest);
+      if (payableAmount <= 0) {
+        toast.error("To'lanishi mumkin bo'lgan summa mavjud emas");
         return;
       }
       const paymentAmount = Number(values.amount || 0);
-      if (paymentAmount > debtAmount) {
-        toast.error("To'lov qarzdan oshmasin");
+      if (paymentAmount > payableAmount) {
+        toast.error("To'lov rejalashtirilgan umumiy summadan oshmasin");
+        return;
+      }
+      if (paymentGuest?.bulk) {
+        let remaining = paymentAmount;
+        const unpaidGuests = paymentGuest.guests.filter(
+          (guest) => getPayableAmount(guest) > 0,
+        );
+        for (let index = 0; index < unpaidGuests.length; index += 1) {
+          const guest = unpaidGuests[index];
+          const guestDebt = getPayableAmount(guest);
+          const remainingGuests = unpaidGuests.length - index;
+          const equalShare = Math.floor(remaining / remainingGuests);
+          const guestPayment = Math.min(
+            guestDebt,
+            index === unpaidGuests.length - 1 ? remaining : equalShare,
+          );
+          if (guestPayment <= 0) continue;
+          await addPayment({
+            id: guest._id,
+            amount: guestPayment,
+            type: values.type,
+            note: String(values.note || "").trim() || "Umumiy to'lov",
+          }).unwrap();
+          remaining -= guestPayment;
+          if (remaining <= 0) break;
+        }
+        toast.success("Umumiy to'lov mijozlarga taqsimlandi");
+        closePaymentModal();
+        setSelectedGuestIds([]);
         return;
       }
       const result = await addPayment({
@@ -478,12 +691,49 @@ function GuestsPage({ tab = "active" }) {
     }
   };
 
+  const onPaymentEditSubmit = async (values) => {
+    try {
+      if (!editingPayment?.guestId && editingPayment?.index !== 0) {
+        toast.error("To'lov topilmadi");
+        return;
+      }
+      const result = await updateGuestPayment({
+        id: editingPayment.guestId,
+        paymentIndex: editingPayment.index,
+        amount: Number(values.amount || 0),
+        type: values.type,
+        note: String(values.note || "").trim(),
+      }).unwrap();
+      setHistoryGuest(result?.innerData || historyGuest);
+      refetchGuests();
+      toast.success(result?.message || "To'lov yangilandi");
+      closePaymentEditModal();
+    } catch (err) {
+      toast.error(err?.data?.message || "To'lovni tahrirlashda xatolik");
+    }
+  };
+
   const onCheckout = async (id) => {
     try {
       const result = await checkoutGuest(id).unwrap();
       toast.success(result?.message || "Checkout qilindi");
     } catch (err) {
       toast.error(err?.data?.message || "Checkoutda xatolik");
+    }
+  };
+
+  const onBulkCheckout = async () => {
+    if (!selectedGuestIds.length) {
+      toast.info("Kamida 1 ta mehmonni tanlang");
+      return;
+    }
+
+    try {
+      const result = await checkoutGuestsBulk({ ids: selectedGuestIds }).unwrap();
+      toast.success(result?.message || "Tanlangan mehmonlar checkout qilindi");
+      setSelectedGuestIds([]);
+    } catch (err) {
+      toast.error(err?.data?.message || "Bulk checkoutda xatolik");
     }
   };
 
@@ -543,12 +793,24 @@ function GuestsPage({ tab = "active" }) {
         lastname: String(values.lastname || "").trim(),
         passport: String(values.passport || "").trim(),
         phone: String(values.phone || "").trim(),
+        email: String(values.email || "").trim(),
+        organization: String(values.organization || "").trim(),
+        organizationInn: String(values.organizationInn || "").replace(/\D/g, ""),
+        room: values.room,
         guestType: values.guestType || "uzb",
         dailyRate: Number(values.dailyRate || 0),
+        dailyRates: (values.dailyRates || []).map((item, index) => ({
+          day: Number(item?.day || index + 1),
+          amount: Number(item?.amount || 0),
+        })),
         stayDays: Number(values.stayDays || 1),
         note: String(values.note || "").trim(),
         isBlacklisted: Boolean(values.isBlacklisted),
+        checkInAt: values.checkInAt ? values.checkInAt.toISOString() : undefined,
       };
+      if (editGuestStatus === "checked_out" && values.checkOutAt) {
+        payload.checkOutAt = values.checkOutAt.toISOString();
+      }
       if (editGuestStatus === "booked" && values.bookedForAt) {
         payload.bookedForAt = values.bookedForAt.format("YYYY-MM-DD");
       }
@@ -577,6 +839,34 @@ function GuestsPage({ tab = "active" }) {
     setTimeout(() => {
       printHotelReceipt();
     }, 120);
+  };
+
+  const openContinueModal = (guest) => {
+    setContinuingGuest(guest);
+    continueForm.setFieldsValue({ additionalDays: 1 });
+    setIsContinueModalOpen(true);
+  };
+
+  const closeContinueModal = () => {
+    setIsContinueModalOpen(false);
+    setContinuingGuest(null);
+    continueForm.resetFields();
+  };
+
+  const onContinueGuestStay = async (values) => {
+    if (!continuingGuest?._id) return;
+    try {
+      const result = await continueGuestStay({
+        id: continuingGuest._id,
+        additionalDays: Number(values.additionalDays || 1),
+      }).unwrap();
+      toast.success(
+        result?.message || "Mijozning yashash jarayoni davom ettirildi",
+      );
+      closeContinueModal();
+    } catch (err) {
+      toast.error(err?.data?.message || "Jarayonni davom ettirishda xatolik");
+    }
   };
   const onExportDebtorsExcel = useCallback(async () => {
     try {
@@ -610,8 +900,7 @@ function GuestsPage({ tab = "active" }) {
         Telefon: guest.phone || "",
         "Mehmon turi": guest.guestType === "chetellik" ? "Chet ellik" : "UZB",
         VIP: guest.vip ? "Ha" : "Yo'q",
-        Xona: guest.room?.roomNumber || "",
-        Qavat: guest.room?.floor ? `${guest.room.floor}-qavat` : "",
+        Xona: formatRoomLabel(guest.room),
         "Xona turi":
           guest.room?.category === "bir_kishilik"
             ? "1 Kishilik"
@@ -670,7 +959,7 @@ function GuestsPage({ tab = "active" }) {
       toast.error(err?.data?.message || "Excel yuklab olishda xatolik");
     }
   }, [fetchGuestsForExport, filters]);
-  const paymentDebtMax = Math.max(Number(paymentGuest?.debtAmount || 0), 0);
+  const paymentDebtMax = getPayableAmount(paymentGuest);
   const debtorsActionsMenu = useMemo(
     () => ({
       items: [
@@ -696,6 +985,30 @@ function GuestsPage({ tab = "active" }) {
     if (start && end && start.isValid() && end.isValid()) return [start, end];
     return null;
   }, [filters.endDate, filters.startDate]);
+  const checkoutSelectableGuests = useMemo(
+    () =>
+      guests.filter(
+        (guest) => guest.status === "active" || (guest.status === "booked" && guest.group),
+      ),
+    [guests],
+  );
+  const selectedGuestCount = selectedGuestIds.length;
+  const selectedPaymentGuests = useMemo(
+    () =>
+      checkoutSelectableGuests.filter(
+        (guest) => guest.status === "active" && selectedGuestIds.includes(guest._id),
+      ),
+    [checkoutSelectableGuests, selectedGuestIds],
+  );
+  const hasBookedGroupGuestsSelected = selectedPaymentGuests.length !== selectedGuestIds.length;
+  const selectedRoomIds = new Set(
+    selectedPaymentGuests.map((guest) => String(guest.room?._id || guest.room || "")),
+  );
+  const hasGuestsFromMultipleRooms = selectedRoomIds.size > 1;
+  const allVisibleSelected =
+    tab === "active" &&
+    checkoutSelectableGuests.length > 0 &&
+    checkoutSelectableGuests.every((guest) => selectedGuestIds.includes(guest._id));
 
   return (
     <div className="employee-page guests-page">
@@ -818,14 +1131,66 @@ function GuestsPage({ tab = "active" }) {
           <PageLoader />
         ) : (
           <>
+            {tab === "active" ? (
+              <div className="guests-bulk-actions">
+                <Checkbox
+                  checked={allVisibleSelected}
+                  indeterminate={
+                    selectedGuestCount > 0 && !allVisibleSelected
+                  }
+                  onChange={(e) => {
+                    setSelectedGuestIds(
+                      e.target.checked
+                        ? checkoutSelectableGuests.map((guest) => guest._id)
+                        : [],
+                    );
+                  }}
+                >
+                  Barchasi  |
+                  <span className="guests-bulk-count">
+                    Jami: {pagination.total || 0}
+                  </span>
+                </Checkbox>
+                <div style={{display: "flex", gap: "10px"}}>
+                <Button
+                  className="hotel-primary-btn"
+                  loading={bulkCheckingOut}
+                  disabled={!selectedGuestIds.length}
+                  onClick={onBulkCheckout}
+                  >
+                  Checkout qilish ({selectedGuestIds.length})
+                </Button>
+                <Button
+                  className="hotel-primary-btn"
+                  disabled={
+                    !selectedGuestIds.length ||
+                    hasBookedGroupGuestsSelected ||
+                    hasGuestsFromMultipleRooms ||
+                    paying
+                  }
+                  title={
+                    hasBookedGroupGuestsSelected
+                      ? "Guruh bronlari uchun to'lov Guruhlar bo'limida qilinadi"
+                      : hasGuestsFromMultipleRooms
+                      ? "Umumiy to'lov faqat bitta xonadagi mijozlar uchun"
+                      : "Umumiy to'lov"
+                  }
+                  onClick={openBulkPaymentModal}
+                >
+                  Umumiy to'lov
+                </Button>
+                  </div>
+              </div>
+            ) : null}
             <div className="table-wrap guests-table-wrap">
               <table className="table">
                 <thead>
                   <tr>
+                    {tab === "active" ? <th></th> : null}
                     <th>F.I.SH</th>
                     <th>Passport</th>
                     <th>Xona</th>
-                    <th>Kunlar</th>
+                    <th>{tab === "history" ? "Kunlar" : "Yashash muddati"}</th>
                     <th>Kunlik</th>
                     <th>Jami</th>
                     <th>To'langan</th>
@@ -843,25 +1208,75 @@ function GuestsPage({ tab = "active" }) {
                 <tbody>
                   {guests.map((guest) => (
                     <tr key={guest._id}>
+                      {tab === "active" ? (
+                        <td data-label="Tanlash">
+                          <Checkbox
+                            checked={selectedGuestIds.includes(guest._id)}
+                            onChange={(e) => {
+                              setSelectedGuestIds((prev) =>
+                                e.target.checked
+                                  ? [...new Set([...prev, guest._id])]
+                                  : prev.filter((id) => id !== guest._id),
+                              );
+                            }}
+                            disabled={
+                              guest.status !== "active" &&
+                              !(guest.status === "booked" && guest.group)
+                            }
+                          />
+                        </td>
+                      ) : null}
                       <td data-label="F.I.SH">
-                        {guest.firstname} {guest.lastname}
+                        <div className="guest-name-cell">
+                          <strong>
+                            {guest.firstname} {guest.lastname}
+                          </strong>
+                          {guest.email ? (
+                            <small>{guest.email}</small>
+                          ) : null}
+                          {guest.group ? (
+                            <Tag color="cyan">Guruh: {guest.group.name}</Tag>
+                          ) : null}
+                        </div>
                       </td>
                       <td data-label="Passport">{guest.passport}</td>
                       <td data-label="Xona">
                         <b>{guest.room?.roomNumber || "-"}</b>
                         <br />
                         <span className="room-floor">
-                          {guest.room?.floor
-                            ? `${guest.room.floor}-qavat`
+                          {guest.room?.korpus
+                            ? `${guest.room.korpus}`
                             : "-"}
+                          {guest.room?.floor ? ` · ${guest.room.floor}-qavat` : ""}
                         </span>
                       </td>
-                      <td data-label="Kunlar">
-                        {guest.billableDays || guest.stayDays || 1} /{" "}
-                        {guest.stayDays || 1}
+                      <td data-label={tab === "history" ? "Kunlar" : "Yashash muddati"}>
+                        <div className="guest-days-cell">
+                          <strong>
+                            {tab === "history"
+                              ? getStayedDays(
+                                  guest.checkInAt,
+                                  guest.checkOutAt,
+                                  hotelSettings?.checkoutTime || "12:00",
+                                )
+                              : guest.stayDays || 1} kun
+                          </strong>
+                          <small>
+                            {tab === "history"
+                              ? ""
+                              : `Bugun ${getCurrentStayDay(
+                                  guest.checkInAt,
+                                  hotelSettings?.checkoutTime || "12:00",
+                                )}-kun`}
+                          </small>
+                        </div>
                       </td>
                       <td data-label="Kunlik">
-                        {Number(guest.dailyRate || 0).toLocaleString()}
+                        {Number(
+                          tab === "active"
+                            ? guest.currentDailyRate ?? guest.dailyRate
+                            : guest.dailyRate || 0,
+                        ).toLocaleString()}
                       </td>
                       <td data-label="Jami">
                         {Number(guest.totalAmount || 0).toLocaleString()}
@@ -948,7 +1363,7 @@ function GuestsPage({ tab = "active" }) {
                                   : "To'lov"
                               }
                               disabled={
-                                guest.vip || Number(guest.debtAmount || 0) <= 0
+                                guest.vip || getPayableAmount(guest) <= 0
                               }
                             >
                               <FiCreditCard size={16} />
@@ -975,7 +1390,7 @@ function GuestsPage({ tab = "active" }) {
                                 }
                                 disabled={
                                   guest.vip ||
-                                  Number(guest.debtAmount || 0) <= 0
+                                  getPayableAmount(guest) <= 0
                                 }
                               >
                                 <FiCreditCard size={16} />
@@ -1016,6 +1431,15 @@ function GuestsPage({ tab = "active" }) {
                           {tab === "history" ? (
                             <button
                               className="icon-btn"
+                              title="Jarayonni davom ettirish"
+                              onClick={() => openContinueModal(guest)}
+                            >
+                              <FiRefreshCw size={16} />
+                            </button>
+                          ) : null}
+                          {tab === "history" ? (
+                            <button
+                              className="icon-btn"
                               title="Hisobot"
                               onClick={() => onPrintHotelReceipt(guest)}
                             >
@@ -1036,7 +1460,7 @@ function GuestsPage({ tab = "active" }) {
                               overlayClassName="hotel-popconfirm"
                             >
                               <button
-                                className="icon-btn danger"
+                                className="icon-btn"
                                 title="O'chirish"
                               >
                                 <FiTrash2 size={16} />
@@ -1050,7 +1474,7 @@ function GuestsPage({ tab = "active" }) {
                   {guests.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={tab === "history" ? 15 : 13}
+                        colSpan={tab === "history" ? 15 : tab === "active" ? 14 : 13}
                         className="table-empty"
                       >
                         Hech narsa topilmadi
@@ -1183,18 +1607,20 @@ function GuestsPage({ tab = "active" }) {
           >
             <Form.Item
               name="amount"
-              label="Summasi"
+              label={paymentGuest?.bulk ? "Umumiy to'lov summasi" : "Summasi"}
               rules={[
                 { required: true, message: "Summa majburiy" },
                 () => ({
                   validator() {
-                    const debtAmount = Number(paymentGuest?.debtAmount || 0);
+                    const debtAmount = getPayableAmount(paymentGuest);
                     const value = Number(
                       paymentForm.getFieldValue("amount") || 0,
                     );
                     if (debtAmount > 0 && value > debtAmount) {
                       return Promise.reject(
-                        new Error("To'lov miqdori qarzdan oshmasin"),
+                        new Error(
+                          "To'lov rejalashtirilgan umumiy summadan oshmasin",
+                        ),
                       );
                     }
                     return Promise.resolve();
@@ -1252,6 +1678,64 @@ function GuestsPage({ tab = "active" }) {
                 Saqlash
               </Button>
               <Button onClick={closePaymentModal}>Yopish</Button>
+            </div>
+          </Form>
+        </Modal>
+      ) : null}
+
+      {isContinueModalOpen ? (
+        <Modal
+          open={isContinueModalOpen}
+          onCancel={closeContinueModal}
+          footer={null}
+          destroyOnHidden
+          width={480}
+          rootClassName="employee-modal-theme"
+          title="Yashash jarayonini davom ettirish"
+        >
+          <p>
+            <b>
+              {continuingGuest?.firstname || ""}{" "}
+              {continuingGuest?.lastname || ""}
+            </b>{" "}
+            avvalgi yozuvi bilan davom etadi. To‘lovlar va xizmatlar saqlanadi.
+          </p>
+          <Form
+            form={continueForm}
+            layout="vertical"
+            onFinish={onContinueGuestStay}
+            requiredMark={false}
+          >
+            <Form.Item
+              name="additionalDays"
+              label="Qo‘shimcha qolish kunlari"
+              rules={[
+                { required: true, message: "Qo‘shimcha kunni kiriting" },
+                {
+                  type: "number",
+                  min: 1,
+                  max: 365,
+                  message: "1 dan 365 kungacha kiriting",
+                },
+              ]}
+            >
+              <InputNumber
+                min={1}
+                max={365}
+                precision={0}
+                style={{ width: "100%" }}
+                onKeyDown={blockNonIntegerKeys}
+              />
+            </Form.Item>
+            <div className="row-actions">
+              <Button
+                htmlType="submit"
+                loading={continuingStay}
+                className="hotel-primary-btn"
+              >
+                Davom ettirish
+              </Button>
+              <Button onClick={closeContinueModal}>Bekor qilish</Button>
             </div>
           </Form>
         </Modal>
@@ -1335,7 +1819,7 @@ function GuestsPage({ tab = "active" }) {
           onCancel={closeEditModal}
           footer={null}
           destroyOnHidden
-          width={560}
+          width={920}
           rootClassName="employee-modal-theme"
           title="Mehmonni tahrirlash"
         >
@@ -1399,6 +1883,54 @@ function GuestsPage({ tab = "active" }) {
               />
             </Form.Item>
             <Form.Item
+              name="email"
+              label="Email"
+              rules={[
+                {
+                  type: "email",
+                  message: "Email formati noto'g'ri",
+                },
+              ]}
+            >
+              <Input placeholder="name@example.com" />
+            </Form.Item>
+            <Form.Item name="organization" label="Tashkilot">
+              <Input maxLength={120} placeholder="Ixtiyoriy" />
+            </Form.Item>
+            <Form.Item
+              name="organizationInn"
+              label="Tashkilot INN"
+              rules={[{ pattern: /^\d{9}$/, message: "INN 9 ta raqamdan iborat bo'lishi kerak" }]}
+            >
+              <Input
+                inputMode="numeric"
+                maxLength={9}
+                placeholder="Ixtiyoriy"
+                onChange={(e) =>
+                  editForm.setFieldValue(
+                    "organizationInn",
+                    String(e.target.value || "").replace(/\D/g, ""),
+                  )
+                }
+              />
+            </Form.Item>
+            <Form.Item
+              name="room"
+              label="Xona"
+              rules={[{ required: true, message: "Xona majburiy" }]}
+            >
+              <Select
+                showSearch
+                placeholder="Xona tanlang"
+                options={roomEditOptions}
+                filterOption={(input, option) =>
+                  String(option?.label || "")
+                    .toLowerCase()
+                    .includes(String(input || "").toLowerCase())
+                }
+              />
+            </Form.Item>
+            <Form.Item
               name="guestType"
               label="Mehmon turi"
               rules={[{ required: true, message: "Mehmon turi majburiy" }]}
@@ -1424,21 +1956,122 @@ function GuestsPage({ tab = "active" }) {
                 }
                 parser={(value) => String(value || "").replace(/[^\d]/g, "")}
                 onKeyDown={blockNonIntegerKeys}
+                onChange={applyBaseDailyRate}
               />
             </Form.Item>
             <Form.Item
               name="stayDays"
-              label="Qolish kuni"
+              label={
+                editGuestStatus === "checked_out"
+                  ? "Qolish kuni (checkoutdan hisoblanadi)"
+                  : "Qolish kuni"
+              }
               rules={[{ required: true, message: "Kun majburiy" }]}
             >
               <InputNumber
                 min={1}
                 precision={0}
+                disabled={editGuestStatus === "checked_out"}
                 style={{ width: "100%" }}
                 parser={(value) => String(value || "").replace(/[^\d]/g, "")}
                 onKeyDown={blockNonIntegerKeys}
               />
             </Form.Item>
+            <Form.List name="dailyRates">
+              {(fields) => (
+                <div className="guest-daily-rates">
+                  <label>Kunlar bo'yicha narx</label>
+                  {fields.map((field) => (
+                    <div
+                      className={`guest-daily-rate-row ${
+                        Number(editForm.getFieldValue(["dailyRates", field.name, "day"]) || field.name + 1) === editGuestCurrentDay
+                          ? "is-current-day"
+                          : ""
+                      }`}
+                      key={field.key}
+                    >
+                      <span>
+                        {editForm.getFieldValue(["dailyRates", field.name, "day"]) || field.name + 1}-kun
+                        {Number(editForm.getFieldValue(["dailyRates", field.name, "day"]) || field.name + 1) === editGuestCurrentDay
+                          ? " · Bugun"
+                          : ""}
+                      </span>
+                      <Form.Item name={[field.name, "day"]} hidden><Input /></Form.Item>
+                      <Form.Item
+                        name={[field.name, "amount"]}
+                        rules={[{ required: true, message: "Narx majburiy" }]}
+                        noStyle
+                      >
+                        <InputNumber
+                          min={0}
+                          precision={0}
+                          style={{ width: "100%" }}
+                          formatter={(value) => String(value || "").replace(/\B(?=(\d{3})+(?!\d))/g, " ")}
+                          parser={(value) => String(value || "").replace(/[^\d]/g, "")}
+                          onKeyDown={blockNonIntegerKeys}
+                          onChange={(value) =>
+                            editForm.setFieldValue(
+                              ["dailyRates", field.name, "amount"],
+                              Number(value || 0),
+                            )
+                          }
+                        />
+                      </Form.Item>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Form.List>
+            <Form.Item
+              name="checkInAt"
+              label="Kelgan sana vaqti"
+              rules={[{ required: true, message: "Kelgan sana vaqti majburiy" }]}
+            >
+              <DatePicker
+                style={{ width: "100%" }}
+                showTime={{ format: "HH:mm" }}
+                format="DD.MM.YYYY HH:mm"
+                allowClear={false}
+              />
+            </Form.Item>
+            {editGuestStatus === "checked_out" ? (
+              <Form.Item
+                name="checkOutAt"
+                label="Checkout sana vaqti"
+                rules={[
+                  { required: true, message: "Checkout sana vaqti majburiy" },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      const checkInAt = getFieldValue("checkInAt");
+                      if (!value || !checkInAt || !value.isBefore(checkInAt)) {
+                        if (value?.isAfter(dayjs())) {
+                          return Promise.reject(
+                            new Error(
+                              "Checkout hozirgi vaqtdan keyin bo'lishi mumkin emas",
+                            ),
+                          );
+                        }
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(
+                        new Error("Checkout kelgan sanadan oldin bo'lishi mumkin emas"),
+                      );
+                    },
+                  }),
+                ]}
+              >
+                <DatePicker
+                  style={{ width: "100%" }}
+                  showTime={{ format: "HH:mm" }}
+                  format="DD.MM.YYYY HH:mm"
+                  allowClear={false}
+                  disabledDate={(current) =>
+                    current &&
+                    current.startOf("day").isAfter(dayjs().startOf("day"))
+                  }
+                />
+              </Form.Item>
+            ) : null}
             {editGuestStatus === "booked" ? (
               <Form.Item
                 name="bookedForAt"
@@ -1455,17 +2088,18 @@ function GuestsPage({ tab = "active" }) {
                 />
               </Form.Item>
             ) : null}
-            <Form.Item name="vip" label=" " valuePropName="checked">
-              <Checkbox>VIP so'rov yuborish</Checkbox>
-            </Form.Item>
-            <Form.Item
-              name="isBlacklisted"
-              label=" "
-              valuePropName="checked"
-              className="guest-edit-note-full"
-            >
-              <Checkbox>Qora ro'yxatga olish</Checkbox>
-            </Form.Item>
+            <div className="guest-edit-flex-row guest-edit-note-full">
+              <Form.Item name="vip" label=" " valuePropName="checked">
+                <Checkbox>VIP so'rov yuborish</Checkbox>
+              </Form.Item>
+              <Form.Item
+                name="isBlacklisted"
+                label=" "
+                valuePropName="checked"
+              >
+                <Checkbox>Qora ro'yxatga olish</Checkbox>
+              </Form.Item>
+            </div>
             <Form.Item
               name="note"
               label="Izoh"
@@ -1495,7 +2129,14 @@ function GuestsPage({ tab = "active" }) {
           destroyOnHidden
           width={720}
           rootClassName="employee-modal-theme"
-          title={`To'lov tarixi: ${historyGuest?.firstname || ""} ${historyGuest?.lastname || ""}`}
+          title={
+            <div className="guest-history-title">
+              <strong>
+                {historyGuest?.firstname || ""} {historyGuest?.lastname || ""}
+              </strong>
+              {historyGuest?.email ? <small>{historyGuest.email}</small> : null}
+            </div>
+          }
         >
           <div className="table-wrap history-payments-wrap">
             <table className="table history-payments-table">
@@ -1506,6 +2147,7 @@ function GuestsPage({ tab = "active" }) {
                   <th>Turi</th>
                   <th>Summa</th>
                   <th>Izoh</th>
+                  <th>Amal</th>
                 </tr>
               </thead>
               <tbody>
@@ -1518,11 +2160,21 @@ function GuestsPage({ tab = "active" }) {
                       {Number(payment.amount || 0).toLocaleString()}
                     </td>
                     <td data-label="Izoh">{payment.note || "-"}</td>
+                    <td data-label="Amal">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => openPaymentEditModal(payment, index)}
+                        title="To'lov turini tahrirlash"
+                      >
+                        <FiEdit2 size={14} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {(historyGuest?.payments || []).length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="table-empty">
+                    <td colSpan={6} className="table-empty">
                       To'lov tarixi mavjud emas
                     </td>
                   </tr>
@@ -1533,6 +2185,66 @@ function GuestsPage({ tab = "active" }) {
           <div className="row-actions" style={{ marginTop: 12 }}>
             <Button onClick={closeHistoryModal}>Yopish</Button>
           </div>
+        </Modal>
+      ) : null}
+
+      {isPaymentEditModalOpen ? (
+        <Modal
+          open={isPaymentEditModalOpen}
+          onCancel={closePaymentEditModal}
+          footer={null}
+          destroyOnHidden
+          width={440}
+          rootClassName="employee-modal-theme"
+          title="To'lovni tahrirlash"
+        >
+          <Form
+            form={paymentEditForm}
+            layout="vertical"
+            onFinish={onPaymentEditSubmit}
+            requiredMark={false}
+          >
+            <Form.Item
+              name="amount"
+              label="To'lov summasi"
+              rules={[{ required: true, message: "To'lov summasi majburiy" }]}
+            >
+              <InputNumber
+                min={0}
+                style={{ width: "100%" }}
+                addonAfter="so'm"
+                formatter={(value) =>
+                  String(value || "").replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+                }
+                parser={(value) => String(value || "").replace(/[^\d]/g, "")}
+                onKeyDown={blockNonIntegerKeys}
+              />
+            </Form.Item>
+            <Form.Item
+              name="type"
+              label="To'lov turi"
+              rules={[{ required: true, message: "To'lov turi majburiy" }]}
+            >
+              <Segmented
+                options={paymentTypeOptions}
+                block
+                className="payment-type-segmented"
+              />
+            </Form.Item>
+            <Form.Item name="note" label="Izoh">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+            <div className="row-actions">
+              <Button
+                htmlType="submit"
+                className="hotel-primary-btn"
+                loading={updatingPayment}
+              >
+                Saqlash
+              </Button>
+              <Button onClick={closePaymentEditModal}>Yopish</Button>
+            </div>
+          </Form>
         </Modal>
       ) : null}
 
@@ -1565,7 +2277,10 @@ function GuestsPage({ tab = "active" }) {
           </div>
           <div className="receipt-row">
             <span>Xona:</span>
-            <span>{receiptData?.roomNumber || "-"}</span>
+            <span>
+              {receiptData?.roomNumber || "-"}
+              {receiptData?.roomKorpus ? ` / ${receiptData.roomKorpus}` : ""}
+            </span>
           </div>
           <div className="receipt-row">
             <span>To'lov turi:</span>
@@ -1625,10 +2340,7 @@ function GuestsPage({ tab = "active" }) {
               {hotelReceiptData?.lastname || ""}
             </div>
             <div>
-              <b>Xona:</b> {hotelReceiptData?.room?.roomNumber || "-"} /{" "}
-              {hotelReceiptData?.room?.floor
-                ? `${hotelReceiptData.room.floor}-qavat`
-                : "-"}
+              <b>Xona:</b> {formatRoomLabel(hotelReceiptData?.room)}
             </div>
             <div>
               <b>Passport:</b> {hotelReceiptData?.passport || "-"}

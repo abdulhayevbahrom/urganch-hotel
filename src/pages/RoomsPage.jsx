@@ -2,18 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Form,
+  Image,
   Input,
   InputNumber,
   Modal,
   Popconfirm,
   Segmented,
   Select,
+  Upload,
 } from "antd";
 import { toast } from "react-toastify";
 import {
   useCreateRoomMutation,
   useDeleteRoomMutation,
   useGetRoomsQuery,
+  useGetSettingsQuery,
   useUpdateRoomMutation,
 } from "../store/employeeApi";
 import {
@@ -21,13 +24,21 @@ import {
   preventInvalidAmountPaste,
 } from "../utils/numberFormat";
 import PageLoader from "../components/PageLoader";
+import API_CONFIG from "../config/apiConfig";
 
-const roomCategoryOptions = [
-  { label: "Standart", value: "standart" },
-  { label: "Polulyuks", value: "polulyuks" },
-  { label: "Lyuks", value: "lyuks" },
-  { label: "Apartament", value: "apartament" },
-  { label: "1 Kishilik", value: "bir_kishilik" },
+const DEFAULT_ROOM_CATEGORIES = [
+  "standart",
+  "polulyuks",
+  "lyuks",
+  "apartament",
+  "bir_kishilik",
+];
+const formatCategoryLabel = (value) =>
+  value === "bir_kishilik" ? "1 Kishilik" : String(value || "");
+
+const roomKorpusOptions = [
+  { label: "A korpus", value: "A" },
+  { label: "B korpus", value: "B" },
 ];
 
 const roomStatusOptions = [
@@ -41,8 +52,35 @@ const roomConditionOptions = [
   { label: "Remont", value: "remont" },
 ];
 
+const parseLegacyRoomNumber = (value) => {
+  const raw = String(value || "").trim().toUpperCase();
+  const match = raw.match(/^(\d+)([AB])$/);
+  if (!match) return { roomNumber: raw, korpus: "A" };
+  return { roomNumber: match[1], korpus: match[2] };
+};
+
+const compareRoomNumbers = (left, right) => {
+  const korpusOrder = { A: 0, B: 1 };
+  const leftKorpus = String(left?.korpus || "A").trim().toUpperCase();
+  const rightKorpus = String(right?.korpus || "A").trim().toUpperCase();
+  const korpusDiff =
+    (korpusOrder[leftKorpus] ?? Number.POSITIVE_INFINITY) -
+    (korpusOrder[rightKorpus] ?? Number.POSITIVE_INFINITY);
+  if (korpusDiff !== 0) return korpusDiff;
+
+  const leftText = String(left?.roomNumber || "").trim().toUpperCase();
+  const rightText = String(right?.roomNumber || "").trim().toUpperCase();
+  const leftMatch = leftText.match(/^(\d+)/);
+  const rightMatch = rightText.match(/^(\d+)/);
+  const leftNumber = leftMatch ? Number(leftMatch[1]) : Number.POSITIVE_INFINITY;
+  const rightNumber = rightMatch ? Number(rightMatch[1]) : Number.POSITIVE_INFINITY;
+  if (leftNumber !== rightNumber) return leftNumber - rightNumber;
+  return leftText.localeCompare(rightText, "uz", { numeric: true });
+};
+
 const initialForm = {
   roomNumber: "",
+  korpus: "A",
   floor: 1,
   capacity: 1,
   category: "standart",
@@ -54,12 +92,14 @@ const formatMoney = (value) => Number(value || 0).toLocaleString();
 function RoomsPage() {
   const [form] = Form.useForm();
   const { data, isLoading } = useGetRoomsQuery();
+  const { data: settingsData } = useGetSettingsQuery();
   const [createRoom, { isLoading: isCreating }] = useCreateRoomMutation();
   const [updateRoom, { isLoading: isUpdating }] = useUpdateRoomMutation();
   const [deleteRoom, { isLoading: isDeleting }] = useDeleteRoomMutation();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [query, setQuery] = useState("");
+  const [korpusFilter, setKorpusFilter] = useState(undefined);
   const [floorFilter, setFloorFilter] = useState(undefined);
   const [categoryFilter, setCategoryFilter] = useState(undefined);
   const [statusFilter, setStatusFilter] = useState(undefined);
@@ -68,6 +108,9 @@ function RoomsPage() {
     typeof window !== "undefined" ? window.innerWidth < 900 : false,
   );
   const [error, setError] = useState("");
+  const [imageFiles, setImageFiles] = useState([]);
+  const [existingImages, setExistingImages] = useState([]);
+  const [galleryRoom, setGalleryRoom] = useState(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobileFilters(window.innerWidth < 900);
@@ -77,6 +120,16 @@ function RoomsPage() {
   }, []);
 
   const rooms = useMemo(() => data?.innerData || [], [data]);
+  const roomCategoryOptions = useMemo(() => {
+    const categories =
+      settingsData?.innerData?.roomCategories?.length > 0
+        ? settingsData.innerData.roomCategories
+        : DEFAULT_ROOM_CATEGORIES;
+    return categories.map((value) => ({
+      label: formatCategoryLabel(value),
+      value,
+    }));
+  }, [settingsData]);
   const floorOptions = useMemo(() => {
     const floors = [
       ...new Set(
@@ -88,34 +141,47 @@ function RoomsPage() {
 
   const filteredRooms = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rooms.filter((room) => {
-      const roomNumber = String(room.roomNumber || "").toLowerCase();
-      const category = String(room.category || "").toLowerCase();
-      const status = String(room.status || "").toLowerCase();
-      const byText =
-        !q ||
-        roomNumber.includes(q) ||
-        category.includes(q) ||
-        status.includes(q);
-      const byFloor = floorFilter === undefined || room.floor === floorFilter;
-      const byCategory = !categoryFilter || room.category === categoryFilter;
-      const byStatus = !statusFilter || room.status === statusFilter;
-      return byText && byFloor && byCategory && byStatus;
-    });
-  }, [rooms, query, floorFilter, categoryFilter, statusFilter]);
+    return rooms
+      .filter((room) => {
+        const roomNumber = String(room.roomNumber || "").toLowerCase();
+        const korpus = String(room.korpus || "").toLowerCase();
+        const category = String(room.category || "").toLowerCase();
+        const status = String(room.status || "").toLowerCase();
+        const byText =
+          !q ||
+          roomNumber.includes(q) ||
+          korpus.includes(q) ||
+          category.includes(q) ||
+          status.includes(q);
+        const byFloor = floorFilter === undefined || room.floor === floorFilter;
+        const byKorpus = !korpusFilter || room.korpus === korpusFilter;
+        const byCategory = !categoryFilter || room.category === categoryFilter;
+        const byStatus = !statusFilter || room.status === statusFilter;
+        return byText && byFloor && byKorpus && byCategory && byStatus;
+      })
+      .sort(compareRoomNumbers);
+  }, [rooms, query, floorFilter, korpusFilter, categoryFilter, statusFilter]);
 
   const openCreateModal = () => {
     setError("");
     setEditingId("");
+    setImageFiles([]);
+    setExistingImages([]);
     form.setFieldsValue(initialForm);
     setIsModalOpen(true);
   };
 
+  const korpusSegments = useMemo(() => roomKorpusOptions, []);
+
   const openEditModal = (room) => {
     setError("");
     setEditingId(room._id);
+    setImageFiles([]);
+    setExistingImages(room.images || []);
+    const legacy = parseLegacyRoomNumber(room.roomNumber);
     form.setFieldsValue({
-      roomNumber: room.roomNumber,
+      roomNumber: legacy.roomNumber,
+      korpus: room.korpus || legacy.korpus || "A",
       floor: room.floor,
       capacity: room.capacity || 1,
       category: room.category,
@@ -129,27 +195,37 @@ function RoomsPage() {
     setIsModalOpen(false);
     setEditingId("");
     setError("");
+    setImageFiles([]);
+    setExistingImages([]);
     form.resetFields();
   };
 
   const onSubmit = async (values) => {
-    const payload = {
-      roomNumber: String(values.roomNumber || "").trim(),
-      floor: Number(values.floor),
-      capacity: Number(values.capacity || 1),
-      category: values.category,
-      prices: {
+    const roomNumberRaw = String(values.roomNumber || "").trim().toUpperCase();
+    const roomNumberValue = String(roomNumberRaw || "").replace(/[AB]$/, "");
+    const korpusValue =
+      String(values.korpus || "").trim().toUpperCase() ||
+      parseLegacyRoomNumber(roomNumberRaw).korpus ||
+      "A";
+    const payload = new FormData();
+    payload.append("roomNumber", roomNumberValue);
+    payload.append("korpus", korpusValue);
+    payload.append("floor", String(Number(values.floor)));
+    payload.append("capacity", String(Number(values.capacity || 1)));
+    payload.append("category", values.category);
+    payload.append(
+      "prices",
+      JSON.stringify({
         oddiy: Number(values.prices?.oddiy || 0),
         chetEllik: Number(values.prices?.chetEllik || 0),
-      },
-    };
-    if (editingId) {
-      payload.status = values.condition === "remont" ? "remont" : "bosh";
-    }
+      }),
+    );
+    if (editingId) payload.append("status", values.condition === "remont" ? "remont" : "bosh");
+    imageFiles.forEach((file) => payload.append("images", file.originFileObj || file));
 
     try {
       if (editingId) {
-        const result = await updateRoom({ id: editingId, ...payload }).unwrap();
+        const result = await updateRoom({ id: editingId, body: payload }).unwrap();
         toast.success(result?.message || "Xona yangilandi");
       } else {
         const result = await createRoom(payload).unwrap();
@@ -161,6 +237,22 @@ function RoomsPage() {
       setError(message);
       toast.error(message);
     }
+  };
+
+  const beforeImageUpload = (file) => {
+    if (!file.type?.startsWith("image/")) {
+      toast.error("Faqat rasm fayllarini yuklash mumkin");
+      return Upload.LIST_IGNORE;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("Har bir rasm 8 MB dan oshmasligi kerak");
+      return Upload.LIST_IGNORE;
+    }
+    if (existingImages.length + imageFiles.length >= 8) {
+      toast.error("Ko'pi bilan 8 ta rasm yuklash mumkin");
+      return Upload.LIST_IGNORE;
+    }
+    return false;
   };
 
   const onDelete = async (id) => {
@@ -219,13 +311,21 @@ function RoomsPage() {
               ) : null}
               <input
                 className="search-input"
-                placeholder="Qidirish: xona raqami, kategoriya, status"
+                placeholder="Qidirish: xona raqami, korpus, kategoriya, status"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
             </div>
             {!isMobileFilters ? (
               <>
+                <Select
+                  allowClear
+                  className="filter-select"
+                  placeholder="Korpus"
+                  options={roomKorpusOptions}
+                  value={korpusFilter}
+                  onChange={setKorpusFilter}
+                />
                 <Select
                   allowClear
                   className="filter-select"
@@ -276,6 +376,9 @@ function RoomsPage() {
                 </div>
                 <div className="room-meta">
                   <div>
+                    <strong>Korpus:</strong> {room.korpus || "-"} korpus
+                  </div>
+                  <div>
                     <strong>Qavat:</strong> {room.floor}
                   </div>
                   <div className="room-capacity-row">
@@ -305,6 +408,23 @@ function RoomsPage() {
                   </div>
                 </div>
                 <div className="table-action-wrap">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => setGalleryRoom(room)}
+                    disabled={!room.images?.length}
+                    aria-label="Rasmlarni ko'rish"
+                    title={room.images?.length ? "Rasmlarni ko'rish" : "Rasm yuklanmagan"}
+                  >
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none">
+                      <path
+                        d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      />
+                      <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="2" />
+                    </svg>
+                  </button>
                   <button
                     className="icon-btn"
                     onClick={() => openEditModal(room)}
@@ -389,6 +509,7 @@ function RoomsPage() {
             initialValues={initialForm}
             onFinish={onSubmit}
             requiredMark={false}
+            className="rooms-form-grid"
           >
             <Form.Item
               name="roomNumber"
@@ -404,13 +525,13 @@ function RoomsPage() {
               <Input placeholder="Masalan: 305" />
             </Form.Item>
 
-            {/* <Form.Item
-              name="floor"
-              label="Qavat"
-              rules={[{ required: true, message: "Qavat majburiy" }]}
+            <Form.Item
+              name="korpus"
+              label="Korpus"
+              rules={[{ required: true, message: "Korpus majburiy" }]}
             >
-              <InputNumber min={1} style={{ width: "100%" }} />
-            </Form.Item> */}
+              <Segmented options={korpusSegments} block />
+            </Form.Item>
 
             <Form.Item
               name="floor"
@@ -441,13 +562,6 @@ function RoomsPage() {
               />
             </Form.Item>
 
-            {/* <Form.Item
-              name="capacity"
-              label="Sig'imi"
-              rules={[{ required: true, message: "Sig'im majburiy" }]}
-            >
-              <InputNumber min={1} style={{ width: "100%" }} />
-            </Form.Item> */}
             <Form.Item
               name="capacity"
               label="Sig'imi"
@@ -485,20 +599,6 @@ function RoomsPage() {
               <Select options={roomCategoryOptions} />
             </Form.Item>
 
-            {/* <Form.Item
-              name={["prices", "oddiy"]}
-              label="Standart narx"
-              rules={[{ required: true, message: "Standart narx majburiy" }]}
-            >
-              <InputNumber
-                min={0}
-                style={{ width: "100%" }}
-                formatter={(value) =>
-                  `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
-                }
-              />
-            </Form.Item> */}
-
             <Form.Item
               name={["prices", "oddiy"]}
               label="Standart narx"
@@ -528,18 +628,6 @@ function RoomsPage() {
               />
             </Form.Item>
 
-            {/* <Form.Item
-              name={["prices", "chetEllik"]}
-              label="Xorijiy mehmonlar uchun narx"
-              rules={[
-                {
-                  required: true,
-                  message: "Xorijiy mehmonlar uchun narx majburiy",
-                },
-              ]}
-            >
-              <InputNumber min={0} style={{ width: "100%" }} />
-            </Form.Item> */}
             <Form.Item
               name={["prices", "chetEllik"]}
               label="Xorijiy mehmonlar uchun narx"
@@ -586,6 +674,34 @@ function RoomsPage() {
               </Form.Item>
             ) : null}
 
+            <Form.Item
+              label={`Xona rasmlari (${existingImages.length + imageFiles.length}/8)`}
+              className="room-images-form-item"
+              extra="Har bir rasm 8 MB gacha. Ko'pi bilan 8 ta rasm yuklash mumkin."
+            >
+              {existingImages.length ? (
+                <div className="room-existing-images">
+                  {existingImages.map((image) => (
+                    <img
+                      key={image}
+                      src={`${API_CONFIG.MAIN_API.baseUrl}${image}`}
+                      alt="Xona"
+                    />
+                  ))}
+                </div>
+              ) : null}
+              <Upload
+                accept="image/*"
+                multiple
+                listType="picture-card"
+                fileList={imageFiles}
+                beforeUpload={beforeImageUpload}
+                onChange={({ fileList }) => setImageFiles(fileList.slice(0, 8 - existingImages.length))}
+              >
+                {existingImages.length + imageFiles.length < 8 ? "+ Rasm" : null}
+              </Upload>
+            </Form.Item>
+
             {error ? <div className="form-error">{error}</div> : null}
             <div className="row-actions">
               <Button
@@ -602,6 +718,27 @@ function RoomsPage() {
       ) : null}
 
       <Modal
+        open={Boolean(galleryRoom)}
+        onCancel={() => setGalleryRoom(null)}
+        footer={null}
+        width={820}
+        title={galleryRoom ? `Xona ${galleryRoom.roomNumber} rasmlari` : "Xona rasmlari"}
+        rootClassName="employee-modal-theme"
+      >
+        <Image.PreviewGroup>
+          <div className="room-gallery">
+            {galleryRoom?.images?.map((image, index) => (
+              <Image
+                key={image}
+                src={`${API_CONFIG.MAIN_API.baseUrl}${image}`}
+                alt={`${galleryRoom.roomNumber}-xona, ${index + 1}-rasm`}
+              />
+            ))}
+          </div>
+        </Image.PreviewGroup>
+      </Modal>
+
+      <Modal
         open={isFilterModalOpen}
         onCancel={() => setIsFilterModalOpen(false)}
         footer={null}
@@ -611,6 +748,14 @@ function RoomsPage() {
         rootClassName="room-filter-modal-theme"
       >
         <div className="room-filter-modal-body">
+          <Select
+            allowClear
+            className="filter-select"
+            placeholder="Korpus"
+            options={roomKorpusOptions}
+            value={korpusFilter}
+            onChange={setKorpusFilter}
+          />
           <Select
             allowClear
             className="filter-select"
@@ -645,6 +790,7 @@ function RoomsPage() {
             <Button
               onClick={() => {
                 setFloorFilter(undefined);
+                setKorpusFilter(undefined);
                 setCategoryFilter(undefined);
                 setStatusFilter(undefined);
               }}

@@ -49,7 +49,7 @@ export const employeeApi = apiSlice.injectEndpoints({
       invalidatesTags: ["Room"],
     }),
     updateRoom: builder.mutation({
-      query: ({ id, ...body }) => ({
+      query: ({ id, body }) => ({
         url: `/room/${id}`,
         method: "PUT",
         body,
@@ -100,6 +100,9 @@ export const employeeApi = apiSlice.injectEndpoints({
     getGuestByPassport: builder.query({
       query: (passport) => `/guest/by-passport/${encodeURIComponent(passport)}`,
     }),
+    getGuestById: builder.query({
+      query: (id) => `/guest/${encodeURIComponent(id)}`,
+    }),
     createGuest: builder.mutation({
       query: (body) => ({
         url: "/guest",
@@ -115,6 +118,42 @@ export const employeeApi = apiSlice.injectEndpoints({
         body,
       }),
       invalidatesTags: ["Guest", "Room"],
+    }),
+    getGroupBookings: builder.query({
+      query: ({ tab = "active", page = 1, limit = 20 } = {}) =>
+        `/group-bookings?tab=${encodeURIComponent(tab)}&page=${page}&limit=${limit}`,
+      providesTags: ["GroupBooking", "Guest"],
+    }),
+    createGroupBooking: builder.mutation({
+      query: (body) => ({
+        url: "/group-booking",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["GroupBooking", "Guest", "Room"],
+    }),
+    updateGroupBooking: builder.mutation({
+      query: ({ id, ...body }) => ({
+        url: `/group-booking/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["GroupBooking", "Guest"],
+    }),
+    deleteGroupBooking: builder.mutation({
+      query: (id) => ({
+        url: `/group-booking/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["GroupBooking", "Guest", "Room"],
+    }),
+    addGroupPayment: builder.mutation({
+      query: ({ id, ...body }) => ({
+        url: `/group-booking/${id}/payment`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["GroupBooking", "Guest"],
     }),
     updateGuest: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -132,10 +171,34 @@ export const employeeApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Guest"],
     }),
+    updateGuestPayment: builder.mutation({
+      query: ({ id, paymentIndex, ...body }) => ({
+        url: `/guest/${id}/payment/${paymentIndex}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Guest"],
+    }),
     checkoutGuest: builder.mutation({
       query: (id) => ({
         url: `/guest/${id}/checkout`,
         method: "POST",
+      }),
+      invalidatesTags: ["Guest", "Room"],
+    }),
+    continueGuestStay: builder.mutation({
+      query: ({ id, additionalDays }) => ({
+        url: `/guest/${id}/continue`,
+        method: "POST",
+        body: { additionalDays },
+      }),
+      invalidatesTags: ["Guest", "Room"],
+    }),
+    checkoutGuestsBulk: builder.mutation({
+      query: (body) => ({
+        url: "/guests/checkout-bulk",
+        method: "POST",
+        body,
       }),
       invalidatesTags: ["Guest", "Room"],
     }),
@@ -252,6 +315,9 @@ export const employeeApi = apiSlice.injectEndpoints({
           : "/reports-summary";
       },
     }),
+    getDailyReport: builder.query({
+      query: (date) => `/reports-daily?date=${encodeURIComponent(String(date || ""))}`,
+    }),
     createExpense: builder.mutation({
       query: (body) => ({
         url: "/expense",
@@ -272,6 +338,14 @@ export const employeeApi = apiSlice.injectEndpoints({
       query: (id) => ({
         url: `/expense/${id}`,
         method: "DELETE",
+      }),
+      invalidatesTags: ["Expense"],
+    }),
+    deleteExpensesBulk: builder.mutation({
+      query: (ids) => ({
+        url: "/expenses/bulk",
+        method: "DELETE",
+        body: { ids },
       }),
       invalidatesTags: ["Expense"],
     }),
@@ -314,11 +388,20 @@ export const {
   useGetVipRequestsCountQuery,
   useDecideVipRequestMutation,
   useLazyGetGuestByPassportQuery,
+  useLazyGetGuestByIdQuery,
   useCreateGuestMutation,
   useCreateGuestsBulkMutation,
+  useGetGroupBookingsQuery,
+  useCreateGroupBookingMutation,
+  useUpdateGroupBookingMutation,
+  useDeleteGroupBookingMutation,
+  useAddGroupPaymentMutation,
   useUpdateGuestMutation,
   useAddGuestPaymentMutation,
+  useUpdateGuestPaymentMutation,
   useCheckoutGuestMutation,
+  useContinueGuestStayMutation,
+  useCheckoutGuestsBulkMutation,
   useDeleteGuestMutation,
   useAddGuestServiceMutation,
   useGetServicesQuery,
@@ -334,9 +417,11 @@ export const {
   useGetExpensesQuery,
   useGetDashboardSummaryQuery,
   useGetReportsSummaryQuery,
+  useGetDailyReportQuery,
   useCreateExpenseMutation,
   useUpdateExpenseMutation,
   useDeleteExpenseMutation,
+  useDeleteExpensesBulkMutation,
   useGetSettingsQuery,
   useUpdateSettingsMutation,
   useSendSupportMessageMutation,

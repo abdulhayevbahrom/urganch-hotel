@@ -8,6 +8,7 @@ import {
   releaseSocketConnection,
 } from "../config/socketConfig";
 import smsIphoneSound from "../assets/sms_iphone.mp3";
+import { useGetVipRequestsCountQuery } from "../store/employeeApi";
 
 const titles = {
   "/dashboard": "Dashboard",
@@ -17,6 +18,7 @@ const titles = {
   "/guests-active": "Active Mijozlar",
   "/guests-history": "Mijozlar Tarixi",
   "/guests-debtors": "Qarzdorlar",
+  "/groups": "Guruhlar",
   "/attendance": "Davomat",
   "/expenses": "Xarajatlar",
   "/finance": "Moliya",
@@ -30,17 +32,20 @@ function AdminHeader() {
   const token = useSelector((state) => state.auth.token);
   const audioRef = useRef(null);
   const previousPendingCountRef = useRef(null);
-  const isAdmin = String(user?.role || "").toLowerCase() === "admin";
-  const isGuestsRealtimePage =
-    location.pathname === "/guests-active" ||
-    location.pathname === "/guests-debtors";
-  const shouldConnectVipSocket =
-    isAdmin && Boolean(token) && !isGuestsRealtimePage;
+  const shouldConnectVipSocket = Boolean(token);
+  const { data: vipCountData } = useGetVipRequestsCountQuery("pending", {
+    skip: !shouldConnectVipSocket,
+  });
   const [pendingCount, setPendingCount] = useState(0);
   const title = titles[location.pathname] || "Admin Panel";
   const name = user
     ? `${user.firstname || ""} ${user.lastname || ""}`.trim()
     : "Guest";
+
+  useEffect(() => {
+    const count = Number(vipCountData?.innerData?.count ?? vipCountData?.count);
+    if (Number.isFinite(count)) setPendingCount(count);
+  }, [vipCountData]);
 
   useEffect(() => {
     audioRef.current = new Audio(smsIphoneSound);
@@ -74,8 +79,6 @@ function AdminHeader() {
   }, [shouldConnectVipSocket, token]);
 
   useEffect(() => {
-    if (!isAdmin) return;
-
     const previousCount = previousPendingCountRef.current;
     if (previousCount !== null && pendingCount > previousCount) {
       const playNotificationSound = async () => {
@@ -90,13 +93,13 @@ function AdminHeader() {
       playNotificationSound();
     }
     previousPendingCountRef.current = pendingCount;
-  }, [isAdmin, pendingCount]);
+  }, [pendingCount]);
 
   return (
     <header className="admin-header">
       <h1>{title}</h1>
       <div className="header-right">
-        {isAdmin ? (
+        {Boolean(token) ? (
           <Link
             className="header-icon-btn header-bell-wrap"
             to="/guests-active"
@@ -116,9 +119,9 @@ function AdminHeader() {
             </svg>
             {pendingCount > 0 ? (
               <span className="bell-badge">
-                {pendingCount > 9 ? "9+" : pendingCount}
-              </span>
-            ) : null}
+              {pendingCount > 9 ? "9+" : pendingCount}
+            </span>
+          ) : null}
           </Link>
         ) : null}
         <div className="header-user">{name || "Admin"}</div>
