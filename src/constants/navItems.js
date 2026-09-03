@@ -16,6 +16,7 @@ export const navItems = [
   { to: "/services", label: "Xizmatlar", section: "services" },
   { to: "/hall-bookings", label: "Zal ijarasi", section: "hall-bookings" },
   { to: "/expenses", label: "Xarajatlar", section: "expenses" },
+  { to: "/cash", label: "Kassa", section: "cash" },
   // { to: "/finance", label: "Moliya", section: "finance" },
   { to: "/reports", label: "Hisobotlar", section: "reports" },
   { to: "/settings", label: "Sozlamalar", section: "settings" },

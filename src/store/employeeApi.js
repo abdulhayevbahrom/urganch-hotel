@@ -109,7 +109,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Guest", "Room"],
+      invalidatesTags: ["Guest", "Room", "Dashboard"],
     }),
     createGuestsBulk: builder.mutation({
       query: (body) => ({
@@ -117,7 +117,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Guest", "Room"],
+      invalidatesTags: ["Guest", "Room", "Dashboard"],
     }),
     getGroupBookings: builder.query({
       query: ({ tab = "active", page = 1, limit = 20 } = {}) =>
@@ -130,7 +130,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["GroupBooking", "Guest", "Room"],
+      invalidatesTags: ["GroupBooking", "Guest", "Room", "Dashboard"],
     }),
     updateGroupBooking: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -138,14 +138,14 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["GroupBooking", "Guest"],
+      invalidatesTags: ["GroupBooking", "Guest", "Dashboard", "Cash"],
     }),
     deleteGroupBooking: builder.mutation({
       query: (id) => ({
         url: `/group-booking/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["GroupBooking", "Guest", "Room"],
+      invalidatesTags: ["GroupBooking", "Guest", "Room", "Dashboard"],
     }),
     addGroupPayment: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -153,7 +153,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["GroupBooking", "Guest"],
+      invalidatesTags: ["GroupBooking", "Guest", "Dashboard"],
     }),
     updateGuest: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -161,7 +161,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["Guest"],
+      invalidatesTags: ["Guest", "Dashboard", "Cash"],
     }),
     addGuestPayment: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -169,7 +169,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Guest"],
+      invalidatesTags: ["Guest", "Dashboard"],
     }),
     updateGuestPayment: builder.mutation({
       query: ({ id, paymentIndex, ...body }) => ({
@@ -177,14 +177,14 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["Guest"],
+      invalidatesTags: ["Guest", "Dashboard"],
     }),
     checkoutGuest: builder.mutation({
       query: (id) => ({
         url: `/guest/${id}/checkout`,
         method: "POST",
       }),
-      invalidatesTags: ["Guest", "Room"],
+      invalidatesTags: ["Guest", "Room", "Dashboard"],
     }),
     continueGuestStay: builder.mutation({
       query: ({ id, additionalDays }) => ({
@@ -192,7 +192,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body: { additionalDays },
       }),
-      invalidatesTags: ["Guest", "Room"],
+      invalidatesTags: ["Guest", "Room", "Dashboard"],
     }),
     checkoutGuestsBulk: builder.mutation({
       query: (body) => ({
@@ -200,14 +200,14 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Guest", "Room"],
+      invalidatesTags: ["Guest", "Room", "Dashboard"],
     }),
     deleteGuest: builder.mutation({
       query: (id) => ({
         url: `/guest/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Guest", "Room"],
+      invalidatesTags: ["Guest", "Room", "Dashboard"],
     }),
     addGuestService: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -215,7 +215,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Guest"],
+      invalidatesTags: ["Guest", "Dashboard"],
     }),
     getServices: builder.query({
       query: (activeOnly = false) =>
@@ -256,7 +256,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["HallBooking"],
+      invalidatesTags: ["HallBooking", "Cash"],
     }),
     updateHallBooking: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -306,6 +306,27 @@ export const employeeApi = apiSlice.injectEndpoints({
           ? `/dashboard?month=${encodeURIComponent(value)}`
           : "/dashboard";
       },
+      providesTags: ["Dashboard"],
+    }),
+    getCashSummary: builder.query({
+      query: () => "/cash",
+      providesTags: ["Cash"],
+    }),
+    closeCash: builder.mutation({
+      query: (body) => ({
+        url: "/cash/close",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Cash"],
+    }),
+    decideCashClosure: builder.mutation({
+      query: ({ id, ...body }) => ({
+        url: `/cash/closures/${id}/decision`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Cash"],
     }),
     getReportsSummary: builder.query({
       query: (month) => {
@@ -324,7 +345,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Expense"],
+      invalidatesTags: ["Expense", "Dashboard"],
     }),
     updateExpense: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -332,14 +353,14 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["Expense"],
+      invalidatesTags: ["Expense", "Dashboard"],
     }),
     deleteExpense: builder.mutation({
       query: (id) => ({
         url: `/expense/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Expense"],
+      invalidatesTags: ["Expense", "Dashboard"],
     }),
     deleteExpensesBulk: builder.mutation({
       query: (ids) => ({
@@ -347,7 +368,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "DELETE",
         body: { ids },
       }),
-      invalidatesTags: ["Expense"],
+      invalidatesTags: ["Expense", "Dashboard"],
     }),
     getSettings: builder.query({
       query: () => "/settings",
@@ -359,7 +380,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["Settings", "Guest"],
+      invalidatesTags: ["Settings", "Guest", "Dashboard"],
     }),
     sendSupportMessage: builder.mutation({
       query: (body) => ({
@@ -416,6 +437,9 @@ export const {
   useDeleteHallBookingMutation,
   useGetExpensesQuery,
   useGetDashboardSummaryQuery,
+  useGetCashSummaryQuery,
+  useCloseCashMutation,
+  useDecideCashClosureMutation,
   useGetReportsSummaryQuery,
   useGetDailyReportQuery,
   useCreateExpenseMutation,

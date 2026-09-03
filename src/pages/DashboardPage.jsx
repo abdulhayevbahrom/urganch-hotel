@@ -18,7 +18,9 @@ import {
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import {
   FiAlertTriangle,
+  FiCreditCard,
   FiDollarSign,
+  FiMinusCircle,
   FiTrendingUp,
   FiUsers,
 } from "react-icons/fi";
@@ -96,12 +98,16 @@ function DashboardPage() {
   const monthKey = selectedMonth.format("YYYY-MM");
 
   const { data, isLoading } = useGetDashboardSummaryQuery(monthKey, {
+    refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
 
   const dashboardData = data?.innerData || {};
   const kpis = dashboardData?.kpis || {};
+  const todayExpectedRevenue = Number(kpis?.todayExpectedRevenue || 0);
+  const todayExpectedPaid = Number(kpis?.todayExpectedPaid || 0);
+  const todayExpectedDebt = Number(kpis?.todayExpectedDebt || 0);
   const todayChange = kpis?.todayChange || { percent: 0, up: true };
   const monthChange = kpis?.monthChange || { percent: 0, up: true };
   const dailySnapshot = dashboardData?.dailySnapshot || {};
@@ -420,6 +426,66 @@ function DashboardPage() {
 
       <div className="dashboard-kpi-grid">
         <article
+          className="dashboard-kpi dashboard-kpi-expected dashboard-clickable-card"
+          {...createNavigateProps(
+            navigate,
+            "/guests-active",
+            "Bugungi tushadigan daromad uchun faol mehmonlarni ochish",
+          )}
+        >
+          <div className="dashboard-kpi-icon">
+            <FiCreditCard size={16} />
+          </div>
+          <div className="dashboard-kpi-label">Bugungi tushadigan daromad</div>
+          <div className="dashboard-kpi-value">
+            {formatMoney(todayExpectedRevenue)} <span>so'm</span>
+          </div>
+          <div className="dashboard-kpi-meta neutral">
+            Bugun xonada yotgan mehmonlar kunlik to'lovi
+          </div>
+        </article>
+
+        <article
+          className="dashboard-kpi dashboard-kpi-today-debt dashboard-clickable-card"
+          {...createNavigateProps(
+            navigate,
+            "/guests-active",
+            "Bugungi qarzdorlik bo'yicha faol mehmonlarni ochish",
+          )}
+        >
+          <div className="dashboard-kpi-icon">
+            <FiAlertTriangle size={16} />
+          </div>
+          <div className="dashboard-kpi-label">Bugungi qarzdorlik</div>
+          <div className="dashboard-kpi-value">
+            {formatMoney(todayExpectedDebt)} <span>so'm</span>
+          </div>
+          <div className="dashboard-kpi-meta neutral">
+            Bugungi to'lov: {formatMoney(todayExpectedPaid)} so'm
+          </div>
+        </article>
+
+        <article
+          className="dashboard-kpi dashboard-kpi-debtors dashboard-clickable-card"
+          {...createNavigateProps(
+            navigate,
+            "/guests-debtors",
+            "Qarzdorlar bo'limini ochish",
+          )}
+        >
+          <div className="dashboard-kpi-icon">
+            <FiAlertTriangle size={16} />
+          </div>
+          <div className="dashboard-kpi-label">Qarzdorlar</div>
+          <div className="dashboard-kpi-value">
+            {Number(kpis?.debtorsCount || 0)}
+          </div>
+          <div className="dashboard-kpi-meta neutral">
+            Jami: {formatMoney(kpis?.debtorsAmount)} so'm
+          </div>
+        </article>
+
+        <article
           className="dashboard-kpi dashboard-kpi-revenue dashboard-clickable-card"
           {...createNavigateProps(
             navigate,
@@ -432,7 +498,7 @@ function DashboardPage() {
           </div>
           <div className="dashboard-kpi-label">Bugungi daromad</div>
           <div className="dashboard-kpi-value">
-            {formatCompactMoney(kpis?.todayRevenue)} <span>so'm</span>
+            {formatMoney(kpis?.todayRevenue)} <span>so'm</span>
           </div>
           <div
             className={`dashboard-kpi-meta ${todayChange.up ? "up" : "down"}`}
@@ -455,7 +521,7 @@ function DashboardPage() {
           </div>
           <div className="dashboard-kpi-label">Oylik daromad</div>
           <div className="dashboard-kpi-value">
-            {formatCompactMoney(kpis?.monthRevenue)} <span>so'm</span>
+            {formatMoney(kpis?.monthRevenue)} <span>so'm</span>
           </div>
           <div
             className={`dashboard-kpi-meta ${monthChange.up ? "up" : "down"}`}
@@ -477,7 +543,8 @@ function DashboardPage() {
           </div>
           <div className="dashboard-kpi-label">Faol mehmonlar</div>
           <div className="dashboard-kpi-value">
-            {Number(kpis?.activeGuests || 0)} / {Number(kpis?.totalCapacity || 0)}
+            {Number(kpis?.activeGuests || 0)} /{" "}
+            {Number(kpis?.totalCapacity || 0)}
           </div>
           <div className="dashboard-kpi-meta neutral">
             faol mehmonlar / barcha xonalar sig'imi
@@ -485,22 +552,62 @@ function DashboardPage() {
         </article>
 
         <article
-          className="dashboard-kpi dashboard-kpi-debtors dashboard-clickable-card"
+          className="dashboard-kpi dashboard-kpi-expense dashboard-clickable-card"
           {...createNavigateProps(
             navigate,
-            "/guests-debtors",
-            "Qarzdorlar bo'limini ochish",
+            "/expenses",
+            "Oylik xarajatlarni ochish",
           )}
         >
           <div className="dashboard-kpi-icon">
-            <FiAlertTriangle size={16} />
+            <FiMinusCircle size={16} />
           </div>
-          <div className="dashboard-kpi-label">Qarzdorlar</div>
+          <div className="dashboard-kpi-label">Oylik xarajat</div>
           <div className="dashboard-kpi-value">
-            {Number(kpis?.debtorsCount || 0)}
+            {formatMoney(kpis?.monthlyExpenses)} <span>so'm</span>
           </div>
           <div className="dashboard-kpi-meta neutral">
-            Jami: {formatCompactMoney(kpis?.debtorsAmount)} so'm
+            Oyliklardan tashqari xarajatlar
+          </div>
+        </article>
+
+        <article
+          className="dashboard-kpi dashboard-kpi-salary dashboard-clickable-card"
+          {...createNavigateProps(
+            navigate,
+            "/expenses",
+            "Berilgan oylik xarajatlarini ochish",
+          )}
+        >
+          <div className="dashboard-kpi-icon">
+            <FiCreditCard size={16} />
+          </div>
+          <div className="dashboard-kpi-label">Berilgan oyliklar</div>
+          <div className="dashboard-kpi-value">
+            {formatMoney(kpis?.salariesPaid)} <span>so'm</span>
+          </div>
+          <div className="dashboard-kpi-meta neutral">
+            Kategoriya yoki nomida oylik/maosh bo'lganlar
+          </div>
+        </article>
+
+        <article
+          className="dashboard-kpi dashboard-kpi-balance dashboard-clickable-card"
+          {...createNavigateProps(
+            navigate,
+            "/reports",
+            "Balans hisobotini ochish",
+          )}
+        >
+          <div className="dashboard-kpi-icon">
+            <FiDollarSign size={16} />
+          </div>
+          <div className="dashboard-kpi-label">Balans</div>
+          <div className="dashboard-kpi-value">
+            {formatMoney(kpis?.balance)} <span>so'm</span>
+          </div>
+          <div className="dashboard-kpi-meta neutral">
+            Kirim - xarajat - oylik
           </div>
         </article>
       </div>

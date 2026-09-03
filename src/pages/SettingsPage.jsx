@@ -51,7 +51,8 @@ function SettingsPage() {
     setRoomCategories(nextCategories);
     form.setFieldsValue({
       hotelName: settings.hotelName || "Mehmonxona nomi",
-      checkoutTime: toTimeValue(settings.checkoutTime || "15:00"),
+      checkinTime: toTimeValue(settings.checkinTime || "09:00"),
+      checkoutTime: toTimeValue(settings.checkoutTime || "12:00"),
       reminderTime: toTimeValue(settings.reminderTime || "12:00"),
       receiptThankYouText: settings.receiptThankYouText || "",
       logo: settings.logo || "",
@@ -128,6 +129,7 @@ function SettingsPage() {
     try {
       const payload = {
         hotelName: String(values.hotelName || "").trim(),
+        checkinTime: values.checkinTime?.format("HH:mm"),
         checkoutTime: values.checkoutTime?.format("HH:mm"),
         reminderTime: values.reminderTime?.format("HH:mm"),
         roomCategories: roomCategories.map((item) => String(item || "").trim()).filter(Boolean),
@@ -202,6 +204,21 @@ function SettingsPage() {
                   </div>
                 </div>
                 <div className="settings-time-row">
+                  <Form.Item
+                    name="checkinTime"
+                    label="Kirish vaqti"
+                    rules={[
+                      { required: true, message: "Kirish vaqti majburiy" },
+                    ]}
+                    className="settings-time-item"
+                  >
+                    <TimePicker
+                      format="HH:mm"
+                      minuteStep={1}
+                      allowClear={false}
+                      className="settings-time-picker"
+                    />
+                  </Form.Item>
                   <Form.Item
                     name="reminderTime"
                     label="Ogohlantirish vaqti"

@@ -55,22 +55,28 @@ import {
 } from "../utils/numberFormat";
 import dayjs from "dayjs";
 
-const getCurrentStayDay = (checkInAt, checkoutTime = "12:00") => {
+const getCurrentStayDay = (checkInAt, checkoutTime = "12:00", checkinTime = "09:00") => {
   if (!checkInAt) return 1;
+  const [checkinHour = 9, checkinMinute = 0] = String(checkinTime)
+    .split(":")
+    .map(Number);
   const [checkoutHour = 12, checkoutMinute = 0] = String(checkoutTime)
     .split(":")
     .map(Number);
   const today = dayjs();
-  const isBeforeCheckout = (value) =>
+  const isBeforeCheckin = (value) =>
+    value.hour() < checkinHour ||
+    (value.hour() === checkinHour && value.minute() < checkinMinute);
+  const isAtOrBeforeCheckout = (value) =>
     value.hour() < checkoutHour ||
-    (value.hour() === checkoutHour && value.minute() < checkoutMinute);
+    (value.hour() === checkoutHour && value.minute() <= checkoutMinute);
   const checkIn = dayjs(checkInAt);
   let checkInOperationalDay = checkIn.startOf("day");
-  if (isBeforeCheckout(checkIn)) {
+  if (isBeforeCheckin(checkIn)) {
     checkInOperationalDay = checkInOperationalDay.subtract(1, "day");
   }
   let currentOperationalDay = today.startOf("day");
-  if (isBeforeCheckout(today)) {
+  if (isAtOrBeforeCheckout(today)) {
     currentOperationalDay = currentOperationalDay.subtract(1, "day");
   }
   return Math.max(
@@ -79,21 +85,24 @@ const getCurrentStayDay = (checkInAt, checkoutTime = "12:00") => {
   );
 };
 
-const getStayedDays = (checkInAt, checkOutAt, checkoutTime = "12:00") => {
+const getStayedDays = (checkInAt, checkOutAt, checkoutTime = "12:00", checkinTime = "09:00") => {
   if (!checkInAt || !checkOutAt) return 1;
+  const [checkinHour = 9, checkinMinute = 0] = String(checkinTime)
+    .split(":")
+    .map(Number);
   const [checkoutHour = 12, checkoutMinute = 0] = String(checkoutTime)
     .split(":")
     .map(Number);
   const checkIn = dayjs(checkInAt);
   const checkOut = dayjs(checkOutAt);
-  const isBeforeCheckout = (value) =>
-    value.hour() < checkoutHour ||
-    (value.hour() === checkoutHour && value.minute() < checkoutMinute);
+  const isBeforeCheckin = (value) =>
+    value.hour() < checkinHour ||
+    (value.hour() === checkinHour && value.minute() < checkinMinute);
   const isAtOrBeforeCheckout = (value) =>
     value.hour() < checkoutHour ||
     (value.hour() === checkoutHour && value.minute() <= checkoutMinute);
   let checkInOperationalDay = checkIn.startOf("day");
-  if (isBeforeCheckout(checkIn)) {
+  if (isBeforeCheckin(checkIn)) {
     checkInOperationalDay = checkInOperationalDay.subtract(1, "day");
   }
   let checkOutOperationalDay = checkOut.startOf("day");
@@ -537,6 +546,7 @@ function GuestsPage({ tab = "active" }) {
         ? getCurrentStayDay(
             guest.checkInAt,
             hotelSettings?.checkoutTime || "12:00",
+            hotelSettings?.checkinTime || "09:00",
           )
         : 0,
     );
@@ -1258,6 +1268,7 @@ function GuestsPage({ tab = "active" }) {
                                   guest.checkInAt,
                                   guest.checkOutAt,
                                   hotelSettings?.checkoutTime || "12:00",
+                                  hotelSettings?.checkinTime || "09:00",
                                 )
                               : guest.stayDays || 1} kun
                           </strong>
@@ -1267,6 +1278,7 @@ function GuestsPage({ tab = "active" }) {
                               : `Bugun ${getCurrentStayDay(
                                   guest.checkInAt,
                                   hotelSettings?.checkoutTime || "12:00",
+                                  hotelSettings?.checkinTime || "09:00",
                                 )}-kun`}
                           </small>
                         </div>
@@ -1289,7 +1301,12 @@ function GuestsPage({ tab = "active" }) {
                       </td>
 
                       <td className="guest-date-time" data-label="Kelgan sana">
-                        {formatDateTime(guest.checkInAt)}
+                        <div className="guest-checkin-cell">
+                          <strong>{formatDateTime(guest.checkInAt)}</strong>
+                          {guest.organization ? (
+                            <small>{guest.organization}</small>
+                          ) : null}
+                        </div>
                       </td>
                       {tab === "history" ? (
                         <td className="guest-date-time" data-label="Chiqqan sana">
@@ -1315,7 +1332,7 @@ function GuestsPage({ tab = "active" }) {
                           ) : guest.isCheckoutReminderTime ? (
                             <Tag color="red">
                               {hotelSettings?.reminderTime || "12:00"}-
-                              {hotelSettings?.checkoutTime || "15:00"}{" "}
+                              {hotelSettings?.checkoutTime || "12:00"}{" "}
                               ogohlantirish
                             </Tag>
                           ) : (

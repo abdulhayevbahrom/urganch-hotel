@@ -1,0 +1,179 @@
+.cash-page .page-card {
+  display: grid;
+  gap: 18px;
+}
+
+.cash-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cash-summary-card {
+  border: 1px solid #e2d2af;
+  border-radius: 8px;
+  background: #fffaf0;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.cash-summary-card span {
+  color: #7a6a4a;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cash-summary-card strong {
+  color: #263851;
+  font-size: 22px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.cash-section {
+  display: grid;
+  gap: 10px;
+}
+
+.cash-tabs .ant-tabs-nav {
+  margin-bottom: 10px;
+}
+
+.cash-tabs .ant-tabs-tab {
+  font-weight: 700;
+}
+
+.cash-empty-panel {
+  border: 1px dashed #d8c69f;
+  border-radius: 8px;
+  background: #fffaf0;
+  color: #7a6a4a;
+  font-weight: 700;
+  padding: 18px;
+  text-align: center;
+}
+
+.cash-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.cash-section-head h3 {
+  margin: 0;
+  color: #25364f;
+  font-size: 18px;
+}
+
+.cash-section-head span {
+  color: #7a6a4a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cash-closure-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cash-closure-card {
+  border: 1px solid #e2d2af;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.cash-closure-card div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cash-closure-card small,
+.cash-closure-card p,
+.cash-closure-card em {
+  margin: 0;
+  color: #6b5b41;
+  font-size: 12px;
+}
+
+.cash-closure-card strong {
+  color: #263851;
+  font-size: 24px;
+}
+
+.cash-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cash-decision-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #5f5137;
+  font-weight: 700;
+}
+
+.cash-payment-segmented {
+  padding: 4px;
+}
+
+.cash-payment-segmented .ant-segmented-group {
+  gap: 4px;
+}
+
+.cash-payment-segmented .ant-segmented-item {
+  border-radius: 6px;
+  color: #6f6148;
+  font-weight: 700;
+}
+
+.cash-payment-segmented .ant-segmented-item-selected {
+  box-shadow: 0 4px 12px rgba(181, 137, 58, 0.28);
+}
+
+.cash-payment-segmented .ant-segmented-item-selected .ant-segmented-item-label {
+  color: #1f2f46;
+}
+
+.cash-modal-theme .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.cash-modal-theme .modal-actions .ant-btn {
+  min-width: 104px;
+}
+
+@media (max-width: 900px) {
+  .cash-summary-grid,
+  .cash-closure-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .cash-summary-grid,
+  .cash-closure-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cash-modal-theme .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .cash-modal-theme .modal-actions .ant-btn {
+    width: 100%;
+  }
+}

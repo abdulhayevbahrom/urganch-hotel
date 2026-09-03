@@ -11,6 +11,7 @@ import FinancePage from "../pages/FinancePage";
 import ReportsPage from "../pages/ReportsPage";
 import AttendancePage from "../pages/AttendancePage";
 import ExpensesPage from "../pages/ExpensesPage";
+import CashPage from "../pages/CashPage";
 import ServicesPage from "../pages/ServicesPage";
 import HallBookingsPage from "../pages/hall/HallBookingsPage";
 import SettingsPage from "../pages/SettingsPage";
@@ -122,6 +123,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireSection section="expenses">
             <ExpensesPage />
+          </RequireSection>
+        ),
+      },
+      {
+        path: "cash",
+        element: (
+          <RequireSection section="cash">
+            <CashPage />
           </RequireSection>
         ),
       },

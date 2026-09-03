@@ -694,6 +694,28 @@ a {
   color: #4b5563;
 }
 
+.guest-checkin-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.2;
+}
+
+.guest-checkin-cell strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.guest-checkin-cell small {
+  max-width: 150px;
+  color: #8a7b63;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: normal;
+  word-break: break-word;
+}
+
 .guests-top-filters {
   display: grid;
   gap: 10px;
