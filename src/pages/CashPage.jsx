@@ -43,6 +43,7 @@ const formatDateTime = (value) => {
 const paymentTypeLabel = {
   naqd: "Naqd",
   karta: "Karta",
+  click: "Click",
   bank: "Bank",
 };
 
@@ -108,9 +109,10 @@ function CashPage() {
       { label: "Jami kassa", value: totals.total },
       { label: "Naqd", value: totals.naqd },
       { label: "Karta", value: totals.karta },
+      { label: "Click", value: totals.click },
       { label: "Bank", value: totals.bank },
     ],
-    [totals.bank, totals.karta, totals.naqd, totals.total],
+    [totals.bank, totals.click, totals.karta, totals.naqd, totals.total],
   );
 
   const openCloseModal = () => {
@@ -353,6 +355,11 @@ function CashPage() {
                                   Naqd: {formatMoney(closure.totals?.naqd)} so'm / Sanalgan:{" "}
                                   {formatMoney(closure.countedCash)} so'm
                                 </p>
+                                <p>
+                                  Karta: {formatMoney(closure.totals?.karta)} so'm / Click:{" "}
+                                  {formatMoney(closure.totals?.click)} so'm / Bank:{" "}
+                                  {formatMoney(closure.totals?.bank)} so'm
+                                </p>
                                 <p>Farq: {formatMoney(closure.difference)} so'm</p>
                                 {closure.note ? <em>{closure.note}</em> : null}
                                 <div className="cash-card-actions">
@@ -398,6 +405,9 @@ function CashPage() {
                   <th>Kassir</th>
                   <th>Jami</th>
                   <th>Naqd</th>
+                  <th>Karta</th>
+                  <th>Click</th>
+                  <th>Bank</th>
                   <th>Sanalgan</th>
                   <th>Farq</th>
                   <th>Holat</th>
@@ -413,6 +423,15 @@ function CashPage() {
                     </td>
                     <td data-label="Naqd">
                       {formatMoney(closure.totals?.naqd)} so'm
+                    </td>
+                    <td data-label="Karta">
+                      {formatMoney(closure.totals?.karta)} so'm
+                    </td>
+                    <td data-label="Click">
+                      {formatMoney(closure.totals?.click)} so'm
+                    </td>
+                    <td data-label="Bank">
+                      {formatMoney(closure.totals?.bank)} so'm
                     </td>
                     <td data-label="Sanalgan">
                       {formatMoney(closure.countedCash)} so'm
@@ -539,6 +558,7 @@ function CashPage() {
               options={[
                 { label: "Naqd", value: "naqd" },
                 { label: "Karta", value: "karta" },
+                { label: "Click", value: "click" },
                 { label: "Bank", value: "bank" },
               ]}
             />

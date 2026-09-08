@@ -5,7 +5,6 @@ import istiqlolHotelMap from "../assets/istiqlol-hotel-map.png";
 const HOTEL_ADDRESS = "Наманганская область, г. Наманган, ул. Ислама Каримова, д. 20";
 const HOTEL_PHONE = "+998 78 223 00 15 Администратор 24/7";
 const HOTEL_EMAIL = "hotel.istiqlol@mail.ru";
-const HOTEL_NAME = "Istiqlol Hotel Namangan";
 const HOTEL_URL = "https://istiqlolhotel.uz";
 const HOTEL_MAP_URL = "https://www.google.com/maps/search/?api=1&query=40.995713%2C71.588813";
 const PURPLE = "#4c2cac";
@@ -118,9 +117,10 @@ function PageChrome({ reservationNumber, page, children }) {
   );
 }
 
-function BookingConfirmation({ guest }) {
+function BookingConfirmation({ guest, hotelName = "Mehmonxona nomi" }) {
   if (!guest) return null;
 
+  const displayHotelName = String(hotelName || "").trim() || "Mehmonxona nomi";
   const reservationNumber = getReservationNumber(guest);
   const { checkIn, checkOut, nights } = getStay(guest);
   const calendar = buildCalendar(checkIn, nights);
@@ -140,7 +140,7 @@ function BookingConfirmation({ guest }) {
   const bookedAt = guest.externalBookedAt || guest.createdAt || new Date();
   const googleCalendarParams = new URLSearchParams({
     action: "TEMPLATE",
-    text: `${HOTEL_NAME} - Бронь № ${reservationNumber}`,
+    text: `${displayHotelName} - Бронь № ${reservationNumber}`,
     dates: `${formatGoogleCalendarDate(checkIn)}/${formatGoogleCalendarDate(checkOut)}`,
     details: `Гость: ${fullName}\nНомер: ${room.roomNumber || "-"}\nБронь № ${reservationNumber}`,
     location: HOTEL_ADDRESS,
@@ -160,7 +160,7 @@ function BookingConfirmation({ guest }) {
 
           <section className="booking-hotel-block">
             <div>
-              <h2><a href={HOTEL_URL} target="_blank" rel="noreferrer">{HOTEL_NAME}</a></h2>
+              <h2><a href={HOTEL_URL} target="_blank" rel="noreferrer">{displayHotelName}</a></h2>
               <dl>
                 <dt>Адрес</dt><dd>{HOTEL_ADDRESS}</dd>
                 <dt>Телефон</dt><dd>{HOTEL_PHONE}</dd>
@@ -168,7 +168,7 @@ function BookingConfirmation({ guest }) {
               </dl>
             </div>
             <div className="booking-logo-box">
-              <img src={istiqlolHotelLogo} alt="Istiqlol Hotel Namangan" />
+              <img src={istiqlolHotelLogo} alt={displayHotelName} />
             </div>
           </section>
 
@@ -243,24 +243,24 @@ function BookingConfirmation({ guest }) {
           </section>
 
           <section className="booking-location">
-            <h2>Местоположение <a href={HOTEL_URL} target="_blank" rel="noreferrer">{HOTEL_NAME}</a></h2>
+            <h2>Местоположение <a href={HOTEL_URL} target="_blank" rel="noreferrer">{displayHotelName}</a></h2>
             <dl><dt>Адрес:</dt><dd>{HOTEL_ADDRESS}</dd><dt>Координаты:</dt><dd>40.995713, 71.588813</dd><dt>Как добраться:</dt><dd>2.6 км Афсоналар Вэлли Парк, 2 км Парк имени Бабура</dd></dl>
             <div className="booking-map">
-              <img src={istiqlolHotelMap} alt="Карта расположения Istiqlol Hotel Namangan" />
+              <img src={istiqlolHotelMap} alt={`Карта расположения ${displayHotelName}`} />
               <a
                 className="booking-map-link"
                 href={HOTEL_MAP_URL}
                 target="_blank"
                 rel="noreferrer"
-                aria-label="Открыть расположение Istiqlol Hotel в Google Maps"
+                aria-label={`Открыть расположение ${displayHotelName} в Google Maps`}
                 title="Открыть в Google Maps"
               />
             </div>
           </section>
 
           <footer className="booking-purple-footer">
-            <p>© {new Date().getFullYear()} <a href={HOTEL_URL} target="_blank" rel="noreferrer">{HOTEL_NAME}</a>,<br />{HOTEL_ADDRESS}</p>
-            <p>Письмо автоматически сформировано Istiqlol Suite</p>
+            <p>© {new Date().getFullYear()} <a href={HOTEL_URL} target="_blank" rel="noreferrer">{displayHotelName}</a>,<br />{HOTEL_ADDRESS}</p>
+            <p>Письмо автоматически сформировано {displayHotelName}</p>
           </footer>
         </main>
       </PageChrome>

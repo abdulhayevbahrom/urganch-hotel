@@ -250,6 +250,10 @@
 }
 
 .dashboard-kpi {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-content: start;
+  column-gap: 10px;
   background: linear-gradient(150deg, #233d66 0%, #1f3457 100%);
   border: 1px solid #395884;
   border-radius: 14px;
@@ -309,6 +313,11 @@
   border-color: #7a6590;
 }
 
+.dashboard-kpi-minibar {
+  background: linear-gradient(145deg, #3e625c 0%, #2e4b49 100%);
+  border-color: #5d8b82;
+}
+
 .dashboard-kpi-salary {
   background: linear-gradient(145deg, #6f5940 0%, #5a4937 100%);
   border-color: #927654;
@@ -342,15 +351,18 @@
   place-items: center;
   background: rgba(247, 238, 221, 0.2);
   color: #f7ecd5;
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 .dashboard-kpi-label {
+  align-self: center;
   font-size: 12px;
   color: #dce4f0;
+  font-weight: 700;
 }
 
 .dashboard-kpi-value {
+  grid-column: 1 / -1;
   margin-top: 6px;
   font-size: clamp(24px, 2.4vw, 38px);
   line-height: 1;
@@ -367,7 +379,23 @@
   color: #d8e0ec;
 }
 
+.dashboard-kpi-subvalue {
+  grid-column: 1 / -1;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 244, 221, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4e3c1;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .dashboard-kpi-meta {
+  grid-column: 1 / -1;
   margin-top: 8px;
   font-size: 12px;
   font-weight: 600;

@@ -563,6 +563,7 @@ function GroupsPage() {
                 options={[
                   { label: "Naqd", value: "naqd" },
                   { label: "Plastik", value: "karta" },
+                  { label: "Click", value: "click" },
                   { label: "Bank", value: "bank" },
                 ]}
               />
@@ -619,6 +620,7 @@ function GroupsPage() {
                 className="group-payment-segment"
                 options={[
                   { label: "Naqd", value: "naqd" },
+                  { label: "Click", value: "click" },
                   { label: "Bank", value: "bank" },
                 ]}
               />

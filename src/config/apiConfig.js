@@ -17,17 +17,10 @@ const mainApiUrl = removeTrailingSlash(
   getEnvValue("VITE_MAIN_API_URL", defaultMainApiUrl),
 );
 
-const attendanceApiUrl = removeTrailingSlash(
-  getEnvValue("VITE_ATTENDANCE_API_BASE_URL", "http://38.242.156.195:8072/api"),
-);
-
 const API_CONFIG = {
   MAIN_API: {
     baseUrl: mainApiBaseUrl,
     apiUrl: mainApiUrl,
-  },
-  ATTENDANCE_API: {
-    baseUrl: attendanceApiUrl,
   },
 };
 

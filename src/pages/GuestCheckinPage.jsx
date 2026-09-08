@@ -735,6 +735,7 @@ function GuestCheckinPage() {
                   options={[
                     { label: "Naqd", value: "naqd" },
                     { label: "Plastik", value: "karta" },
+                    { label: "Click", value: "click" },
                     { label: "Bank o'tkazmasi", value: "bank" },
                   ]}
                 />
@@ -744,6 +745,7 @@ function GuestCheckinPage() {
                   block
                   options={[
                     { label: "Naqd", value: "naqd" },
+                    { label: "Click", value: "click" },
                     { label: "Bank o'tkazmasi", value: "bank" },
                   ]}
                 />

@@ -21,6 +21,7 @@ import {
   FiCreditCard,
   FiDollarSign,
   FiMinusCircle,
+  FiPackage,
   FiTrendingUp,
   FiUsers,
 } from "react-icons/fi";
@@ -552,6 +553,26 @@ function DashboardPage() {
         </article>
 
         <article
+          className="dashboard-kpi dashboard-kpi-minibar dashboard-clickable-card"
+          {...createNavigateProps(
+            navigate,
+            "/guests-history",
+            "Mini bar savdosi bo'yicha mijozlar tarixini ochish",
+          )}
+        >
+          <div className="dashboard-kpi-icon">
+            <FiPackage size={16} />
+          </div>
+          <div className="dashboard-kpi-label">Mini bar savdo</div>
+          <div className="dashboard-kpi-value">
+            {formatMoney(kpis?.miniBarSales)} <span>so'm</span>
+          </div>
+          <div className="dashboard-kpi-meta neutral">
+            Balansga qo'shilmaydi
+          </div>
+        </article>
+
+        <article
           className="dashboard-kpi dashboard-kpi-expense dashboard-clickable-card"
           {...createNavigateProps(
             navigate,
@@ -575,8 +596,8 @@ function DashboardPage() {
           className="dashboard-kpi dashboard-kpi-salary dashboard-clickable-card"
           {...createNavigateProps(
             navigate,
-            "/expenses",
-            "Berilgan oylik xarajatlarini ochish",
+            "/payroll",
+            "Oylik bo'limini ochish",
           )}
         >
           <div className="dashboard-kpi-icon">
@@ -586,8 +607,8 @@ function DashboardPage() {
           <div className="dashboard-kpi-value">
             {formatMoney(kpis?.salariesPaid)} <span>so'm</span>
           </div>
-          <div className="dashboard-kpi-meta neutral">
-            Kategoriya yoki nomida oylik/maosh bo'lganlar
+          <div className="dashboard-kpi-subvalue">
+            Berilishi kerak: {formatMoney(kpis?.payrollFund)} so'm
           </div>
         </article>
 

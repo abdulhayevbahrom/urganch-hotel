@@ -7,6 +7,7 @@ import { useReactToPrint } from "react-to-print";
 import {
   useGetOccupancyQuery,
   useGetRoomsQuery,
+  useGetSettingsQuery,
   useLazyGetGuestByIdQuery,
   useCheckoutGuestMutation,
 } from "../store/employeeApi";
@@ -109,6 +110,11 @@ function OccupancyPage() {
   const bookingPrintRef = useRef(null);
   const guestDetailsRequestRef = useRef(0);
   const token = useSelector((state) => state.auth?.token);
+  const { data: settingsData } = useGetSettingsQuery();
+  const hotelName =
+    settingsData?.innerData?.hotelName ||
+    localStorage.getItem("hotelName") ||
+    "Mehmonxona nomi";
   const todayStart = useMemo(() => startOfDay(new Date()), []);
   const isHistoricalView = viewStart < startOfDay(new Date());
   const viewEnd = useMemo(() => addDays(viewStart, DAY_COUNT), [viewStart]);
@@ -436,7 +442,7 @@ function OccupancyPage() {
 
       <div style={{ position: "absolute", left: "-99999px", top: 0 }}>
         <div ref={bookingPrintRef}>
-          <BookingConfirmation guest={selectedGuest} />
+          <BookingConfirmation guest={selectedGuest} hotelName={hotelName} />
         </div>
       </div>
     </div>

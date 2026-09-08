@@ -6,6 +6,7 @@ import {
   Modal,
   Pagination,
   Popconfirm,
+  Select,
   Switch,
 } from "antd";
 import { useMemo, useState } from "react";
@@ -22,6 +23,11 @@ import {
   preventInvalidAmountPaste,
 } from "../utils/numberFormat";
 import PageLoader from "../components/PageLoader";
+
+const categoryOptions = [
+  { label: "Mini bar", value: "Mini bar" },
+  { label: "Boshqa", value: "Boshqa" },
+];
 
 function ServicesPage() {
   const [form] = Form.useForm();
@@ -43,6 +49,7 @@ function ServicesPage() {
     form.setFieldsValue({
       name: "",
       defaultPrice: 0,
+      category: "Mini bar",
       isActive: true,
       note: "",
     });
@@ -54,6 +61,7 @@ function ServicesPage() {
     form.setFieldsValue({
       name: item.name,
       defaultPrice: Number(item.defaultPrice || 0),
+      category: item.category || "Boshqa",
       isActive: Boolean(item.isActive),
       note: item.note || "",
     });
@@ -65,6 +73,7 @@ function ServicesPage() {
       const payload = {
         name: String(values.name || "").trim(),
         defaultPrice: Number(values.defaultPrice || 0),
+        category: String(values.category || "Boshqa").trim(),
         isActive: Boolean(values.isActive),
         note: String(values.note || "").trim(),
       };
@@ -91,13 +100,13 @@ function ServicesPage() {
     <div className="employee-page services-page">
       <div className="page-card">
         <div className="table-toolbar">
-          <h2>Xizmatlar</h2>
+          <h2>Mini bar mahsulotlari</h2>
           <Button className="hotel-primary-btn" onClick={openCreate}>
-            + Xizmat qo'shish
+            + Mahsulot qo'shish
           </Button>
         </div>
         {isLoading ? (
-          <PageLoader text="Xizmatlar ro'yxati tayyorlanmoqda" />
+          <PageLoader text="Mahsulotlar ro'yxati tayyorlanmoqda" />
         ) : (
           <>
             <div className="table-wrap">
@@ -106,6 +115,7 @@ function ServicesPage() {
                   <tr>
                     <th>Nomi</th>
                     <th>Standart narx</th>
+                    <th>Kategoriya</th>
                     <th>Holat</th>
                     <th>Izoh</th>
                     <th>Amal</th>
@@ -118,6 +128,7 @@ function ServicesPage() {
                       <td data-label="Standart narx">
                         {Number(item.defaultPrice || 0).toLocaleString()} so'm
                       </td>
+                      <td data-label="Kategoriya">{item.category || "Boshqa"}</td>
                       <td data-label="Holat">{item.isActive ? "Faol" : "Nofaol"}</td>
                       <td data-label="Izoh">{item.note || "-"}</td>
                       <td data-label="Amal">
@@ -146,8 +157,8 @@ function ServicesPage() {
                   ))}
                   {!paged.length ? (
                     <tr>
-                      <td colSpan={5} className="table-empty">
-                        Xizmat topilmadi
+                      <td colSpan={6} className="table-empty">
+                        Mahsulot topilmadi
                       </td>
                     </tr>
                   ) : null}
@@ -173,7 +184,7 @@ function ServicesPage() {
         footer={null}
         destroyOnHidden
         rootClassName="employee-modal-theme"
-        title={editing ? "Xizmatni tahrirlash" : "Xizmat qo'shish"}
+        title={editing ? "Mahsulotni tahrirlash" : "Mahsulot qo'shish"}
       >
         <Form
           form={form}
@@ -209,6 +220,13 @@ function ServicesPage() {
               onKeyDown={blockNonIntegerKeys}
               onPaste={preventInvalidAmountPaste}
             />
+          </Form.Item>
+          <Form.Item
+            name="category"
+            label="Kategoriya"
+            rules={[{ required: true, message: "Kategoriya majburiy" }]}
+          >
+            <Select options={categoryOptions} />
           </Form.Item>
           {editing ? (
             <Form.Item name="isActive" label="Faol" valuePropName="checked">

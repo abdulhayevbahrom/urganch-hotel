@@ -246,6 +246,9 @@
 .daily-report-table th:last-child, .daily-report-table td:last-child { text-align: center; }
 .daily-report-table td { padding: 6px 5px; border: 1px solid #111; text-align: center; }
 .daily-report-table tbody tr:nth-child(even) { background: #fff; }
+.daily-report-org-cell { display: flex; flex-direction: column; gap: 2px; line-height: 1.15; }
+.daily-report-org-cell strong { font-weight: 600; }
+.daily-report-org-cell span { font-size: 10px; color: #333; }
 .daily-report-total-row { font-weight: 700; }
 .daily-report-guest-table {
   font-size: 10px;

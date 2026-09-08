@@ -357,6 +357,7 @@ function GroupBookingForm({ onModeChange }) {
                     block
                     options={[
                       { label: "Naqd", value: "naqd" },
+                      { label: "Click", value: "click" },
                       { label: "Bank", value: "bank" },
                     ]}
                   />

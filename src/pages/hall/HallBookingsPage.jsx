@@ -42,6 +42,7 @@ const paymentTypeOptions = [
   { label: "Naqd", value: "naqd" },
   { label: "Bank", value: "bank" },
   { label: "Karta", value: "karta" },
+  { label: "Click", value: "click" },
 ];
 
 const normalizePhone = (value) => {

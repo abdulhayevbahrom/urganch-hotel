@@ -35,6 +35,7 @@ import {
 import {
   useAddGuestServiceMutation,
   useAddGuestPaymentMutation,
+  useDeleteGuestServiceMutation,
   useUpdateGuestPaymentMutation,
   useCheckoutGuestMutation,
   useContinueGuestStayMutation,
@@ -139,6 +140,7 @@ const paymentTypeOptions = [
   { label: "Naqd", value: "naqd" },
   { label: "Bank", value: "bank" },
   { label: "Karta", value: "karta" },
+  { label: "Click", value: "click" },
 ];
 
 const formatDateTime = (value) => {
@@ -357,6 +359,7 @@ function GuestsPage({ tab = "active" }) {
         value: item._id,
         name: item.name,
         defaultPrice: Number(item.defaultPrice || 0),
+        category: item.category || "Boshqa",
       })),
     [servicesData],
   );
@@ -421,6 +424,8 @@ function GuestsPage({ tab = "active" }) {
     useUpdateGuestPaymentMutation();
   const [addGuestService, { isLoading: savingService }] =
     useAddGuestServiceMutation();
+  const [deleteGuestService, { isLoading: deletingService }] =
+    useDeleteGuestServiceMutation();
   const [updateGuest, { isLoading: updating }] = useUpdateGuestMutation();
   const [checkoutGuest, { isLoading: checkingOut }] =
     useCheckoutGuestMutation();
@@ -756,15 +761,34 @@ function GuestsPage({ tab = "active" }) {
         id: serviceGuestId,
         serviceId: values.serviceId,
         name: selectedService?.name || "",
+        category: selectedService?.category || "Boshqa",
         price: Number(selectedService?.defaultPrice || 0),
         quantity: Number(values.quantity || 1),
         note: String(values.note || "").trim(),
       };
       const result = await addGuestService(payload).unwrap();
+      if (historyGuest?._id === serviceGuestId) {
+        setHistoryGuest(result?.innerData || historyGuest);
+      }
       toast.success(result?.message || "Xizmat qo'shildi");
       closeServiceModal();
     } catch (err) {
       toast.error(err?.data?.message || "Xizmat qo'shishda xatolik");
+    }
+  };
+
+  const onDeleteService = async (serviceIndex) => {
+    if (!historyGuest?._id) return;
+    try {
+      const result = await deleteGuestService({
+        id: historyGuest._id,
+        serviceIndex,
+      }).unwrap();
+      setHistoryGuest(result?.innerData || historyGuest);
+      refetchGuests();
+      toast.success(result?.message || "Xizmat olib tashlandi");
+    } catch (err) {
+      toast.error(err?.data?.message || "Xizmatni olib tashlashda xatolik");
     }
   };
 
@@ -907,6 +931,8 @@ function GuestsPage({ tab = "active" }) {
         "T/r": index + 1,
         "F.I.SH": `${guest.firstname || ""} ${guest.lastname || ""}`.trim(),
         Passport: guest.passport || "",
+        INN: guest.organizationInn || "",
+        Tashkilot: guest.organization || "",
         Telefon: guest.phone || "",
         "Mehmon turi": guest.guestType === "chetellik" ? "Chet ellik" : "UZB",
         VIP: guest.vip ? "Ha" : "Yo'q",
@@ -934,6 +960,8 @@ function GuestsPage({ tab = "active" }) {
         { wch: 6 },
         { wch: 28 },
         { wch: 20 },
+        { wch: 14 },
+        { wch: 24 },
         { wch: 18 },
         { wch: 14 },
         { wch: 8 },
@@ -1056,7 +1084,7 @@ function GuestsPage({ tab = "active" }) {
                 </button>
               ) : null}
               <Input
-                placeholder="Ism/Familiya/Passport/Xona"
+                placeholder="Ism/Familiya/Passport/Xona/INN/Tashkilot"
                 value={filters.query}
                 onChange={(e) => onFilterChange({ query: e.target.value })}
               />
@@ -1199,6 +1227,7 @@ function GuestsPage({ tab = "active" }) {
                     {tab === "active" ? <th></th> : null}
                     <th>F.I.SH</th>
                     <th>Passport</th>
+                    <th>Tashkilot / INN</th>
                     <th>Xona</th>
                     <th>{tab === "history" ? "Kunlar" : "Yashash muddati"}</th>
                     <th>Kunlik</th>
@@ -1250,6 +1279,14 @@ function GuestsPage({ tab = "active" }) {
                         </div>
                       </td>
                       <td data-label="Passport">{guest.passport}</td>
+                      <td data-label="Tashkilot / INN">
+                        <div className="guest-name-cell">
+                          <strong>{guest.organization || "-"}</strong>
+                          {guest.organizationInn ? (
+                            <small>INN: {guest.organizationInn}</small>
+                          ) : null}
+                        </div>
+                      </td>
                       <td data-label="Xona">
                         <b>{guest.room?.roomNumber || "-"}</b>
                         <br />
@@ -1303,9 +1340,6 @@ function GuestsPage({ tab = "active" }) {
                       <td className="guest-date-time" data-label="Kelgan sana">
                         <div className="guest-checkin-cell">
                           <strong>{formatDateTime(guest.checkInAt)}</strong>
-                          {guest.organization ? (
-                            <small>{guest.organization}</small>
-                          ) : null}
                         </div>
                       </td>
                       {tab === "history" ? (
@@ -1390,7 +1424,7 @@ function GuestsPage({ tab = "active" }) {
                             <button
                               className="icon-btn"
                               onClick={() => openServiceModal(guest)}
-                              title="Xizmat qo'shish"
+                              title="Mini bar / xizmat qo'shish"
                             >
                               <FiPlus size={17} />
                             </button>
@@ -1491,7 +1525,7 @@ function GuestsPage({ tab = "active" }) {
                   {guests.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={tab === "history" ? 15 : tab === "active" ? 14 : 13}
+                        colSpan={tab === "history" ? 16 : tab === "active" ? 15 : 14}
                         className="table-empty"
                       >
                         Hech narsa topilmadi
@@ -1766,7 +1800,7 @@ function GuestsPage({ tab = "active" }) {
           destroyOnHidden
           width={520}
           rootClassName="employee-modal-theme"
-          title="Mehmonga xizmat qo'shish"
+          title="Mehmonga mini bar / xizmat qo'shish"
         >
           <Form
             form={serviceForm}
@@ -1776,13 +1810,13 @@ function GuestsPage({ tab = "active" }) {
           >
             <Form.Item
               name="serviceId"
-              label="Xizmat nomi"
-              rules={[{ required: true, message: "Xizmat tanlash majburiy" }]}
+              label="Mini bar mahsuloti / xizmat"
+              rules={[{ required: true, message: "Mahsulot yoki xizmat tanlash majburiy" }]}
             >
               <Select
                 showSearch
                 options={serviceOptions}
-                placeholder="Xizmat tanlang"
+                placeholder="Mini bar mahsuloti yoki xizmat tanlang"
                 optionFilterProp="label"
                 onChange={(value) => {
                   const selected = serviceOptions.find(
@@ -2155,6 +2189,68 @@ function GuestsPage({ tab = "active" }) {
             </div>
           }
         >
+          <div className="row-actions" style={{ marginBottom: 12 }}>
+            <Button
+              className="hotel-primary-btn"
+              icon={<FiPlus size={15} />}
+              onClick={() => historyGuest && openServiceModal(historyGuest)}
+            >
+              Mini bar / xizmat qo'shish
+            </Button>
+          </div>
+          <div className="table-wrap history-payments-wrap" style={{ marginBottom: 14 }}>
+            <table className="table history-payments-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Xizmat</th>
+                  <th>Kategoriya</th>
+                  <th>Narx</th>
+                  <th>Soni</th>
+                  <th>Jami</th>
+                  <th>Amal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(historyGuest?.services || []).map((service, index) => (
+                  <tr key={`${service.usedAt || service.name}-${index}`}>
+                    <td data-label="#">{index + 1}</td>
+                    <td data-label="Xizmat">{service.name || "-"}</td>
+                    <td data-label="Kategoriya">{service.category || "Boshqa"}</td>
+                    <td data-label="Narx">
+                      {Number(service.price || 0).toLocaleString()}
+                    </td>
+                    <td data-label="Soni">{Number(service.quantity || 0)}</td>
+                    <td data-label="Jami">
+                      {Number(service.totalAmount || 0).toLocaleString()}
+                    </td>
+                    <td data-label="Amal">
+                      <Popconfirm
+                        title="Xizmatni olib tashlash"
+                        description="Bu summa mijoz hisobidan ayiriladi. Davom etasizmi?"
+                        okText="Olib tashlash"
+                        cancelText="Bekor"
+                        onConfirm={() => onDeleteService(index)}
+                        okButtonProps={{ danger: true, loading: deletingService }}
+                        overlayClassName="hotel-popconfirm"
+                      >
+                        <button className="icon-btn danger" type="button">
+                          <FiTrash2 size={14} />
+                        </button>
+                      </Popconfirm>
+                    </td>
+                  </tr>
+                ))}
+                {(historyGuest?.services || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="table-empty">
+                      Xizmat yoki mini bar biriktirilmagan
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
           <div className="table-wrap history-payments-wrap">
             <table className="table history-payments-table">
               <thead>

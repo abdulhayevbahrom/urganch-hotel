@@ -20,6 +20,7 @@ import PageLoader from "../components/PageLoader";
 import {
   useGetDailyReportQuery,
   useGetReportsSummaryQuery,
+  useGetSettingsQuery,
 } from "../store/employeeApi";
 import "./reports.css";
 
@@ -309,7 +310,11 @@ function ReportsPage() {
   );
   const [dailyReportDate, setDailyReportDate] = useState(() => dayjs());
   const [activeTab, setActiveTab] = useState("summary");
-  const hotelName = localStorage.getItem("hotelName") || "GRAND HOTEL";
+  const { data: settingsData } = useGetSettingsQuery();
+  const hotelName =
+    settingsData?.innerData?.hotelName ||
+    localStorage.getItem("hotelName") ||
+    "Mehmonxona nomi";
   const monthKey = selectedMonth.format("YYYY-MM");
 
   const { data, isLoading, isFetching, error } = useGetReportsSummaryQuery(
@@ -647,7 +652,7 @@ function ReportsPage() {
                                 <th colSpan={3}>Оплата наличными</th>
                                 <th rowSpan={2}>Всего</th>
                                 <th rowSpan={2}>ФИО</th>
-                                <th rowSpan={2}>Tashkilot</th>
+                                <th rowSpan={2}>Tashkilot / INN</th>
                                 <th rowSpan={2}>Предоплата</th>
                                 <th rowSpan={2}>Задолженность</th>
                               </tr>
@@ -672,7 +677,14 @@ function ReportsPage() {
                                   <td>{formatMoney(guest.transfer)}</td>
                                   <td>{formatMoney((guest.cash || 0) + (guest.card || 0) + (guest.transfer || 0))}</td>
                                   <td>{guest.fullName}</td>
-                                  <td>{guest.organization || "-"}</td>
+                                  <td>
+                                    <div className="daily-report-org-cell">
+                                      <strong>{guest.organization || "-"}</strong>
+                                      {guest.organizationInn ? (
+                                        <span>INN: {guest.organizationInn}</span>
+                                      ) : null}
+                                    </div>
+                                  </td>
                                   <td>{formatMoney(guest.closingPrepayment)}</td>
                                   <td>{formatMoney(guest.closingDebt)}</td>
                                 </tr>
@@ -680,7 +692,7 @@ function ReportsPage() {
                               {!dailyGuestRows.length ? (
                                 <tr>
                                   <td
-                                    colSpan={12}
+                                    colSpan={13}
                                     style={{ textAlign: "center" }}
                                   >
                                     Aktiv mijozlar topilmadi

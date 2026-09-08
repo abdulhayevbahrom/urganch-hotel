@@ -36,6 +36,71 @@ export const employeeApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Employee"],
     }),
+    getPayrolls: builder.query({
+      query: (params = {}) => {
+        const search = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+          if (value === undefined || value === null || value === "") return;
+          search.set(key, String(value));
+        });
+        return `/payrolls?${search.toString()}`;
+      },
+      providesTags: ["Payroll"],
+    }),
+    getPayrollHistory: builder.query({
+      query: (params = {}) => {
+        const search = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+          if (value === undefined || value === null || value === "") return;
+          search.set(key, String(value));
+        });
+        return `/payroll-history?${search.toString()}`;
+      },
+      providesTags: ["Payroll"],
+    }),
+    getPayrollPreview: builder.query({
+      query: ({ employeeId, month }) =>
+        `/payroll/preview?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}`,
+      skip: ({ employeeId, month }) => !employeeId || !month,
+    }),
+    createPayroll: builder.mutation({
+      query: (body) => ({
+        url: "/payroll",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Payroll"],
+    }),
+    updatePayroll: builder.mutation({
+      query: ({ id, ...body }) => ({
+        url: `/payroll/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Payroll"],
+    }),
+    updatePayrollAction: builder.mutation({
+      query: ({ id, actionId, ...body }) => ({
+        url: `/payroll/${id}/action/${actionId}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Payroll"],
+    }),
+    deletePayrollAction: builder.mutation({
+      query: ({ id, actionId }) => ({
+        url: `/payroll/${id}/action/${actionId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Payroll"],
+    }),
+    deletePayroll: builder.mutation({
+      query: (id) => ({
+        url: `/payroll/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Payroll"],
+    }),
     getRooms: builder.query({
       query: () => "/rooms",
       providesTags: ["Room"],
@@ -214,6 +279,13 @@ export const employeeApi = apiSlice.injectEndpoints({
         url: `/guest/${id}/service`,
         method: "POST",
         body,
+      }),
+      invalidatesTags: ["Guest", "Dashboard"],
+    }),
+    deleteGuestService: builder.mutation({
+      query: ({ id, serviceIndex }) => ({
+        url: `/guest/${id}/service/${serviceIndex}`,
+        method: "DELETE",
       }),
       invalidatesTags: ["Guest", "Dashboard"],
     }),
@@ -398,6 +470,14 @@ export const {
   useCreateEmployeeMutation,
   useUpdateEmployeeMutation,
   useDeleteEmployeeMutation,
+  useGetPayrollsQuery,
+  useGetPayrollHistoryQuery,
+  useGetPayrollPreviewQuery,
+  useCreatePayrollMutation,
+  useUpdatePayrollMutation,
+  useUpdatePayrollActionMutation,
+  useDeletePayrollActionMutation,
+  useDeletePayrollMutation,
   useGetRoomsQuery,
   useCreateRoomMutation,
   useUpdateRoomMutation,
@@ -425,6 +505,7 @@ export const {
   useCheckoutGuestsBulkMutation,
   useDeleteGuestMutation,
   useAddGuestServiceMutation,
+  useDeleteGuestServiceMutation,
   useGetServicesQuery,
   useCreateServiceMutation,
   useUpdateServiceMutation,
