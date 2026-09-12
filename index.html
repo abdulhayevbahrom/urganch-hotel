@@ -21,9 +21,43 @@
         if (savedHotelName) document.title = savedHotelName;
       } catch (_) {}
     </script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      #payment-alert {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+      }
+
+      #payment-alert h1 {
+        font-size: 2rem;
+        text-align: center;
+      }
+    </style>
+
   </head>
   <body>
-    <div id="root"></div>
+    <!-- payemtn alert -->
+    <div id="payment-alert">
+      <h1>Hurmatli mijoz! Tolovni amalga oshiring</h1>
+    </div>
+    <!-- <div id="root"></div> -->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
