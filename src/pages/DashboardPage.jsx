@@ -96,6 +96,7 @@ function DashboardPage() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
   const monthKey = selectedMonth.format("YYYY-MM");
 
   const { data, isLoading } = useGetDashboardSummaryQuery(monthKey, {

@@ -8,6 +8,7 @@ import {
   Modal,
   Popover,
   Popconfirm,
+  Select,
 } from "antd";
 import { toast } from "react-toastify";
 import { navItems } from "../constants/navItems";
@@ -26,12 +27,38 @@ import PageLoader from "../components/PageLoader";
 const initialForm = {
   firstname: "",
   lastname: "",
+  role: "other",
   position: "",
   salary: "",
   canLogin: false,
   login: "",
   password: "",
   sections: [],
+};
+
+const ROLE_OPTIONS = [
+  { value: "owner", label: "Owner (Direktor)" },
+  { value: "manager", label: "Manager" },
+  { value: "kassir", label: "Kassir" },
+  { value: "other", label: "Boshqa lavozim" },
+];
+
+const ROLE_POSITION_MAP = {
+  owner: "Direktor",
+  manager: "Manager",
+  kassir: "Kassir",
+};
+
+const getEmployeeRole = (employee = {}) => {
+  const explicitRole = String(employee.role || "").toLowerCase().trim();
+  if (["owner", "manager", "kassir", "other"].includes(explicitRole)) {
+    return explicitRole;
+  }
+  const position = String(employee.position || "").toLowerCase().trim();
+  if (["owner", "direktor"].includes(position)) return "owner";
+  if (["manager", "menejer"].includes(position)) return "manager";
+  if (position === "kassir") return "kassir";
+  return "other";
 };
 
 const SECTION_LABEL_MAP = new Map(
@@ -53,6 +80,9 @@ const EmployeeRow = memo(function EmployeeRow({
     <tr>
       <td data-label="F.I.SH">
         {employee.firstname} {employee.lastname}
+      </td>
+      <td data-label="Rol">
+        {ROLE_OPTIONS.find((item) => item.value === getEmployeeRole(employee))?.label || "Boshqa"}
       </td>
       <td data-label="Lavozim">{employee.position}</td>
       <td data-label="Oylik">
@@ -152,6 +182,15 @@ function EmployeesPage() {
   const [editingId, setEditingId] = useState("");
   const [error, setError] = useState("");
   const canLogin = Form.useWatch("canLogin", form);
+  const selectedRole = Form.useWatch("role", form) || "other";
+  const hasAnotherOwner = useMemo(
+    () =>
+      employees.some(
+        (employee) =>
+          getEmployeeRole(employee) === "owner" && employee._id !== editingId,
+      ),
+    [editingId, employees],
+  );
 
   const filteredEmployees = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -178,7 +217,9 @@ function EmployeesPage() {
     const payload = {
       firstname: String(values.firstname || "").trim(),
       lastname: String(values.lastname || "").trim(),
-      position: String(values.position || "").trim(),
+      role: String(values.role || "other").trim(),
+      position:
+        ROLE_POSITION_MAP[values.role] || String(values.position || "").trim(),
       salary: Number(values.salary),
       canLogin: Boolean(values.canLogin),
       sections: values.sections || [],
@@ -221,10 +262,12 @@ function EmployeesPage() {
   const openEditModal = useCallback((employee) => {
     setError("");
     setEditingId(employee._id);
+    const role = getEmployeeRole(employee);
     form.setFieldsValue({
       firstname: employee.firstname || "",
       lastname: employee.lastname || "",
-      position: employee.position || "",
+      role,
+      position: role === "other" ? employee.position || "" : ROLE_POSITION_MAP[role],
       salary: Number(employee.salary ?? 0),
       canLogin: Boolean(employee.canLogin),
       login: employee.login || "",
@@ -271,6 +314,7 @@ function EmployeesPage() {
               <thead>
                 <tr>
                   <th>F.I.SH</th>
+                  <th>Rol</th>
                   <th>Lavozim</th>
                   <th>Oylik</th>
                   <th>Login</th>
@@ -290,7 +334,7 @@ function EmployeesPage() {
                 ))}
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="table-empty">
+                    <td colSpan={7} className="table-empty">
                       Hech narsa topilmadi
                     </td>
                   </tr>
@@ -328,6 +372,12 @@ function EmployeesPage() {
                   });
                 }
               }
+              if (Object.prototype.hasOwnProperty.call(changedValues, "role")) {
+                form.setFieldValue(
+                  "position",
+                  ROLE_POSITION_MAP[changedValues.role] || "",
+                );
+              }
             }}
             requiredMark={false}
           >
@@ -356,8 +406,23 @@ function EmployeesPage() {
             </Form.Item>
 
             <Form.Item
+              name="role"
+              label="Tizimdagi roli"
+              rules={[{ required: true, message: "Rolni tanlang" }]}
+            >
+              <Select
+                options={ROLE_OPTIONS.map((item) => ({
+                  ...item,
+                  disabled: item.value === "owner" && hasAnotherOwner,
+                }))}
+                placeholder="Rolni tanlang"
+              />
+            </Form.Item>
+
+            {selectedRole === "other" ? (
+              <Form.Item
               name="position"
-              label="Lavozim"
+              label="Boshqa lavozim nomi"
               rules={[
                 {
                   required: true,
@@ -366,8 +431,9 @@ function EmployeesPage() {
                 },
               ]}
             >
-              <Input placeholder="Lavozim kiriting" />
-            </Form.Item>
+                <Input placeholder="Masalan: Administrator, Oshpaz" />
+              </Form.Item>
+            ) : null}
 
             {/* <Form.Item
               name="salary"

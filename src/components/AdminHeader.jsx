@@ -22,6 +22,7 @@ const titles = {
   "/attendance": "Davomat",
   "/services": "Mini Bar",
   "/expenses": "Xarajatlar",
+  "/cash": "Kassa",
   "/finance": "Moliya",
   "/reports": "Hisobotlar",
 };

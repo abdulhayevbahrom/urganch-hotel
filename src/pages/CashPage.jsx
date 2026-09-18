@@ -1,20 +1,22 @@
 import {
   Button,
+  DatePicker,
   Form,
   Input,
   InputNumber,
   Modal,
+  Pagination,
   Popconfirm,
-  Segmented,
   Tabs,
   Tag,
 } from "antd";
-import { useMemo, useState } from "react";
+import dayjs from "dayjs";
+import { useEffect, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import { toast } from "react-toastify";
 import {
   FiCheckCircle,
   FiClock,
-  FiRefreshCw,
   FiSend,
   FiXCircle,
 } from "react-icons/fi";
@@ -23,9 +25,14 @@ import {
   useDecideCashClosureMutation,
   useAddGuestPaymentMutation,
   useGetCashSummaryQuery,
+  useGetDailyCashControlQuery,
   useGetGuestsQuery,
 } from "../store/employeeApi";
 import PageLoader from "../components/PageLoader";
+import {
+  acquireSocketConnection,
+  releaseSocketConnection,
+} from "../config/socketConfig";
 import {
   blockNonIntegerKeys,
   preventInvalidAmountPaste,
@@ -71,18 +78,85 @@ const formatActor = (actor) => {
 };
 
 function CashPage() {
+  const user = useSelector((state) => state.auth.user);
+  const token = useSelector((state) => state.auth.token);
+  const isCashier = String(user?.role || "").toLowerCase().trim() === "kassir";
+  const canViewDailyControl = ["owner", "admin"].includes(
+    String(user?.role || "").toLowerCase().trim(),
+  );
   const [form] = Form.useForm();
   const [paymentForm] = Form.useForm();
   const [decisionForm] = Form.useForm();
+  const paymentParts = Form.useWatch("payments", paymentForm) || {};
   const [closingOpen, setClosingOpen] = useState(false);
   const [paymentGuest, setPaymentGuest] = useState(null);
   const [decision, setDecision] = useState(null);
-  const { data, isLoading, refetch, isFetching } = useGetCashSummaryQuery();
-  const { data: debtorsData, isLoading: debtorsLoading } = useGetGuestsQuery({
+  const [openPage, setOpenPage] = useState(1);
+  const [debtorPage, setDebtorPage] = useState(1);
+  const [debtorQuery, setDebtorQuery] = useState("");
+  const [controlDate, setControlDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tashkent" }),
+  );
+  const [controlCashierId, setControlCashierId] = useState("");
+  const [controlPage, setControlPage] = useState(1);
+  const { data, isLoading, refetch } = useGetCashSummaryQuery(
+    { page: openPage, limit: 50 },
+    { pollingInterval: 15000, refetchOnFocus: true, refetchOnReconnect: true },
+  );
+  const {
+    data: debtorsData,
+    isLoading: debtorsLoading,
+    refetch: refetchDebtors,
+  } = useGetGuestsQuery({
     tab: "debtors",
-    page: 1,
-    limit: 8,
+    page: debtorPage,
+    limit: 20,
+    query: debtorQuery,
   });
+  const {
+    data: dailyControlData,
+    isFetching: dailyControlLoading,
+    refetch: refetchDailyControl,
+  } =
+    useGetDailyCashControlQuery(
+      {
+        date: controlDate,
+        cashierId: controlCashierId,
+        page: controlPage,
+        limit: 50,
+      },
+      {
+        skip: !canViewDailyControl,
+        pollingInterval: 15000,
+        refetchOnFocus: true,
+      },
+    );
+
+  useEffect(() => {
+    if (!token) return undefined;
+    const socket = acquireSocketConnection(token);
+    if (!socket) return undefined;
+
+    const handleCashUpdated = () => {
+      refetch();
+      refetchDebtors();
+      if (canViewDailyControl) refetchDailyControl();
+    };
+
+    socket.on("cash_updated", handleCashUpdated);
+    socket.on("guest_updated", handleCashUpdated);
+    return () => {
+      socket.off("cash_updated", handleCashUpdated);
+      socket.off("guest_updated", handleCashUpdated);
+      releaseSocketConnection(socket);
+    };
+  }, [
+    canViewDailyControl,
+    refetch,
+    refetchDailyControl,
+    refetchDebtors,
+    token,
+  ]);
   const [closeCash, { isLoading: closing }] = useCloseCashMutation();
   const [addGuestPayment, { isLoading: addingPayment }] =
     useAddGuestPaymentMutation();
@@ -100,19 +174,53 @@ function CashPage() {
     ? payload.recentClosures
     : [];
   const canApprove = Boolean(payload.canApprove);
+  const cashierSummaries = Array.isArray(payload.cashierSummaries)
+    ? payload.cashierSummaries
+    : [];
+  const openPagination = open.pagination || {};
+  const debtorPagination = debtorsData?.innerData?.pagination || {};
   const debtors = Array.isArray(debtorsData?.innerData?.items)
     ? debtorsData.innerData.items
     : [];
+  const dailyControl = dailyControlData?.innerData || {};
+  const dailyCashiers = Array.isArray(dailyControl.summaries)
+    ? dailyControl.summaries
+    : [];
+  const dailyTransactions = Array.isArray(dailyControl.transactions)
+    ? dailyControl.transactions
+    : [];
+  const dailyPagination = dailyControl.pagination || {};
+  const selectedDailyCashier = dailyCashiers.find(
+    (item) => String(item._id) === String(controlCashierId),
+  );
+  const splitPaymentTotal = ["naqd", "karta", "click", "bank"].reduce(
+    (sum, type) => sum + Number(paymentParts[type] || 0),
+    0,
+  );
+
+  const displayedTotals = useMemo(() => {
+    if (!canApprove) return totals;
+    return cashierSummaries.reduce(
+      (result, item) => ({
+        naqd: result.naqd + Number(item.naqd || 0),
+        karta: result.karta + Number(item.karta || 0),
+        click: result.click + Number(item.click || 0),
+        bank: result.bank + Number(item.bank || 0),
+        total: result.total + Number(item.total || 0),
+      }),
+      { naqd: 0, karta: 0, click: 0, bank: 0, total: 0 },
+    );
+  }, [canApprove, cashierSummaries, totals]);
 
   const totalCards = useMemo(
     () => [
-      { label: "Jami kassa", value: totals.total },
-      { label: "Naqd", value: totals.naqd },
-      { label: "Karta", value: totals.karta },
-      { label: "Click", value: totals.click },
-      { label: "Bank", value: totals.bank },
+      { label: canApprove ? "Barchasi" : "Mening kassam", value: displayedTotals.total },
+      { label: "Naqd", value: displayedTotals.naqd },
+      { label: "Karta", value: displayedTotals.karta },
+      { label: "Click", value: displayedTotals.click },
+      { label: "Bank", value: displayedTotals.bank },
     ],
-    [totals.bank, totals.click, totals.karta, totals.naqd, totals.total],
+    [canApprove, displayedTotals],
   );
 
   const openCloseModal = () => {
@@ -140,18 +248,33 @@ function CashPage() {
   const openPaymentModal = (guest) => {
     setPaymentGuest(guest);
     paymentForm.setFieldsValue({
-      amount: Number(guest?.debtAmount || 0),
-      type: "naqd",
+      payments: {
+        naqd: Number(guest?.debtAmount || 0),
+        karta: 0,
+        click: 0,
+        bank: 0,
+      },
       note: "",
     });
   };
 
   const submitPayment = async (values) => {
+    const payments = ["naqd", "karta", "click", "bank"]
+      .map((type) => ({ type, amount: Number(values.payments?.[type] || 0) }))
+      .filter((item) => item.amount > 0);
+    const total = payments.reduce((sum, item) => sum + item.amount, 0);
+    if (!total) {
+      toast.error("Kamida bitta to'lov usuliga summa kiriting");
+      return;
+    }
+    if (total > Number(paymentGuest?.debtAmount || 0)) {
+      toast.error("Jami to'lov mijoz qarzidan oshmasligi kerak");
+      return;
+    }
     try {
       const result = await addGuestPayment({
         id: paymentGuest._id,
-        amount: Number(values.amount || 0),
-        type: values.type,
+        payments,
         note: String(values.note || "").trim(),
       }).unwrap();
       toast.success(result?.message || "To'lov qabul qilindi");
@@ -187,22 +310,20 @@ function CashPage() {
   return (
     <div className="employee-page cash-page">
       <div className="page-card">
-        <div className="table-toolbar">
-          <h2>Kassa</h2>
-          <div className="toolbar-actions">
-            <Button icon={<FiRefreshCw />} loading={isFetching} onClick={refetch}>
-              Yangilash
-            </Button>
-            <Button
-              className="hotel-primary-btn"
-              icon={<FiSend />}
-              disabled={!transactions.length}
-              onClick={openCloseModal}
-            >
-              Kassani yopish
-            </Button>
+        {isCashier ? (
+          <div className="table-toolbar cash-toolbar">
+            <div className="toolbar-actions">
+              <Button
+                className="hotel-primary-btn"
+                icon={<FiSend />}
+                disabled={!Number(open.count || 0)}
+                onClick={openCloseModal}
+              >
+                Kassani yopish
+              </Button>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="cash-summary-grid">
           {totalCards.map((item) => (
@@ -216,15 +337,81 @@ function CashPage() {
         <Tabs
           className="cash-tabs"
           items={[
+            ...(canApprove
+              ? [
+                  {
+                    key: "owner-open",
+                    label: `Ochiq kassalar (${cashierSummaries.length})`,
+                    children: (
+                      <section className="cash-section">
+                        <div className="cash-section-head">
+                          <h3>Owner nazorati: ochiq kassalar</h3>
+                          <span>{cashierSummaries.length} ta kassir</span>
+                        </div>
+                        <div className="table-wrap">
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>Kassir</th>
+                                <th>To'lovlar</th>
+                                <th>Naqd</th>
+                                <th>Karta</th>
+                                <th>Click</th>
+                                <th>Bank</th>
+                                <th>Jami</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cashierSummaries.map((item) => (
+                                <tr key={item._id || formatActor(item.cashier)}>
+                                  <td>{formatActor(item.cashier)}</td>
+                                  <td>{Number(item.count || 0)} ta</td>
+                                  <td>{formatMoney(item.naqd)} so'm</td>
+                                  <td>{formatMoney(item.karta)} so'm</td>
+                                  <td>{formatMoney(item.click)} so'm</td>
+                                  <td>{formatMoney(item.bank)} so'm</td>
+                                  <td><b>{formatMoney(item.total)} so'm</b></td>
+                                </tr>
+                              ))}
+                              {!cashierSummaries.length ? (
+                                <tr>
+                                  <td className="table-empty" colSpan={7}>
+                                    Ochiq kassalar yo'q
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    ),
+                  },
+                ]
+              : []),
             {
               key: "payments",
-              label: "To'lov olish",
+              label: isCashier ? "To'lov olish" : "Qarzdorlar",
               children: (
                 <section className="cash-section">
                   <div className="cash-section-head">
                     <h3>To'lov qabul qilish</h3>
-                    <span>{debtors.length} ta qarzdor mijoz</span>
+                    <span>{Number(debtorPagination.total || 0)} ta qarzdor mijoz</span>
                   </div>
+                  <Input.Search
+                    allowClear
+                    placeholder="Ism, familiya, xona, INN yoki tashkilot"
+                    value={debtorQuery}
+                    onChange={(event) => {
+                      setDebtorQuery(event.target.value);
+                      setDebtorPage(1);
+                    }}
+                    style={{ maxWidth: 420, marginBottom: 12 }}
+                  />
+                  {!isCashier ? (
+                    <div className="cash-empty-panel" style={{ marginBottom: 12 }}>
+                      Qarzdorlar bo'yicha to'lovni faqat kassir profilidan qabul qilish mumkin.
+                    </div>
+                  ) : null}
                   <div className="table-wrap">
                     <table className="table">
               <thead>
@@ -234,7 +421,7 @@ function CashPage() {
                   <th>Jami</th>
                   <th>To'langan</th>
                   <th>Qarz</th>
-                  <th>Amal</th>
+                  {isCashier ? <th>Amal</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -253,19 +440,21 @@ function CashPage() {
                     <td data-label="Qarz">
                       {formatMoney(guest.debtAmount)} so'm
                     </td>
-                    <td data-label="Amal">
-                      <Button
-                        className="hotel-primary-btn"
-                        onClick={() => openPaymentModal(guest)}
-                      >
-                        To'lov olish
-                      </Button>
-                    </td>
+                    {isCashier ? (
+                      <td data-label="Amal">
+                        <Button
+                          className="hotel-primary-btn"
+                          onClick={() => openPaymentModal(guest)}
+                        >
+                          To'lov olish
+                        </Button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
                 {!debtors.length ? (
                   <tr>
-                    <td className="table-empty" colSpan={6}>
+                    <td className="table-empty" colSpan={isCashier ? 6 : 5}>
                       {debtorsLoading
                         ? "Qarzdorlar yuklanmoqda"
                         : "Qarzdor mijozlar yo'q"}
@@ -275,17 +464,27 @@ function CashPage() {
               </tbody>
                     </table>
                   </div>
+                  {Number(debtorPagination.total || 0) > 20 ? (
+                    <Pagination
+                      current={Number(debtorPagination.page || debtorPage)}
+                      pageSize={20}
+                      total={Number(debtorPagination.total || 0)}
+                      showSizeChanger={false}
+                      onChange={setDebtorPage}
+                      style={{ marginTop: 12 }}
+                    />
+                  ) : null}
                 </section>
               ),
             },
             {
               key: "open",
-              label: `Ochiq kassa (${transactions.length})`,
+              label: `Ochiq kassa (${Number(open.count || 0)})`,
               children: (
                 <section className="cash-section">
                   <div className="cash-section-head">
                     <h3>Ochiq to'lovlar</h3>
-                    <span>{transactions.length} ta to'lov</span>
+                    <span>{Number(open.count || 0)} ta to'lov</span>
                   </div>
                   <div className="table-wrap">
                     <table className="table">
@@ -328,9 +527,197 @@ function CashPage() {
               </tbody>
                     </table>
                   </div>
+                  {Number(openPagination.total || 0) > Number(openPagination.limit || 50) ? (
+                    <Pagination
+                      current={Number(openPagination.page || openPage)}
+                      pageSize={Number(openPagination.limit || 50)}
+                      total={Number(openPagination.total || 0)}
+                      showSizeChanger={false}
+                      onChange={setOpenPage}
+                      style={{ marginTop: 12 }}
+                    />
+                  ) : null}
                 </section>
               ),
             },
+            ...(canViewDailyControl
+              ? [
+                  {
+                    key: "daily-control",
+                    label: "Kunlik nazorat",
+                    children: (
+                      <section className="cash-section">
+                        <div className="cash-section-head cash-daily-control-head">
+                          <div>
+                            <h3>Kassirlarning kunlik to'lovlari</h3>
+                            <span>
+                              {dailyControl.range?.start && dailyControl.range?.end
+                                ? `${formatDateTime(dailyControl.range.start)} — ${formatDateTime(dailyControl.range.end)}`
+                                : "Sana bo'yicha nazorat"}
+                            </span>
+                          </div>
+                          <label className="cash-date-filter">
+                            <span>Sana</span>
+                            <DatePicker
+                              allowClear={false}
+                              value={dayjs(controlDate, "YYYY-MM-DD")}
+                              format="DD.MM.YYYY"
+                              placeholder="Sanani tanlang"
+                              disabledDate={(current) =>
+                                Boolean(
+                                  current &&
+                                    current.startOf("day").isAfter(dayjs().startOf("day")),
+                                )
+                              }
+                              onChange={(date) => {
+                                if (!date) return;
+                                setControlDate(date.format("YYYY-MM-DD"));
+                                setControlCashierId("");
+                                setControlPage(1);
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="table-wrap">
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>Kassir</th>
+                                <th>To'lovlar</th>
+                                <th>Naqd</th>
+                                <th>Karta</th>
+                                <th>Click</th>
+                                <th>Bank</th>
+                                <th>Jami</th>
+                                <th>Amal</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {dailyCashiers.map((item) => (
+                                <tr
+                                  key={item._id || formatActor(item.cashier)}
+                                  className={
+                                    String(item._id) === String(controlCashierId)
+                                      ? "cash-selected-row"
+                                      : ""
+                                  }
+                                >
+                                  <td>{formatActor(item.cashier)}</td>
+                                  <td>{Number(item.count || 0)} ta</td>
+                                  <td>{formatMoney(item.naqd)} so'm</td>
+                                  <td>{formatMoney(item.karta)} so'm</td>
+                                  <td>{formatMoney(item.click)} so'm</td>
+                                  <td>{formatMoney(item.bank)} so'm</td>
+                                  <td><b>{formatMoney(item.total)} so'm</b></td>
+                                  <td>
+                                    <Button
+                                      type="primary"
+                                      danger={
+                                        String(item._id) === String(controlCashierId)
+                                      }
+                                      className="cash-control-toggle"
+                                      icon={
+                                        String(item._id) === String(controlCashierId)
+                                          ? <FiXCircle />
+                                          : undefined
+                                      }
+                                      onClick={() => {
+                                        const isSelected =
+                                          String(item._id) === String(controlCashierId);
+                                        setControlCashierId(
+                                          isSelected ? "" : String(item._id || ""),
+                                        );
+                                        setControlPage(1);
+                                      }}
+                                    >
+                                      {String(item._id) === String(controlCashierId)
+                                        ? "Yopish"
+                                        : "To'lovlarni ko'rish"}
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                              {!dailyCashiers.length ? (
+                                <tr>
+                                  <td className="table-empty" colSpan={8}>
+                                    {dailyControlLoading
+                                      ? "Kunlik ma'lumotlar yuklanmoqda"
+                                      : "Tanlangan kunda kassir to'lovlari yo'q"}
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {controlCashierId ? (
+                          <div className="cash-daily-details">
+                            <div className="cash-section-head">
+                              <h3>
+                                {formatActor(selectedDailyCashier?.cashier)} — to'lovlar ro'yxati
+                              </h3>
+                              <span>{Number(dailyPagination.total || 0)} ta to'lov</span>
+                            </div>
+                            <div className="table-wrap">
+                              <table className="table">
+                                <thead>
+                                  <tr>
+                                    <th>Vaqt</th>
+                                    <th>Manba</th>
+                                    <th>Mijoz / nomi</th>
+                                    <th>To'lov turi</th>
+                                    <th>Summa</th>
+                                    <th>Holat</th>
+                                    <th>Izoh</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {dailyTransactions.map((item) => (
+                                    <tr key={item._id}>
+                                      <td>{formatDateTime(item.paidAt)}</td>
+                                      <td>{sourceTypeLabel[item.sourceType] || item.sourceType}</td>
+                                      <td>{item.title}</td>
+                                      <td>{paymentTypeLabel[item.paymentType] || item.paymentType}</td>
+                                      <td><b>{formatMoney(item.amount)} so'm</b></td>
+                                      <td>
+                                        <Tag color={statusColor[item.status] || "blue"}>
+                                          {statusLabel[item.status] ||
+                                            (item.status === "open" ? "Ochiq" : item.status)}
+                                        </Tag>
+                                      </td>
+                                      <td>{item.note || "-"}</td>
+                                    </tr>
+                                  ))}
+                                  {!dailyTransactions.length ? (
+                                    <tr>
+                                      <td className="table-empty" colSpan={7}>
+                                        {dailyControlLoading
+                                          ? "To'lovlar yuklanmoqda"
+                                          : "To'lovlar topilmadi"}
+                                      </td>
+                                    </tr>
+                                  ) : null}
+                                </tbody>
+                              </table>
+                            </div>
+                            {Number(dailyPagination.total || 0) >
+                            Number(dailyPagination.limit || 50) ? (
+                              <Pagination
+                                current={Number(dailyPagination.page || controlPage)}
+                                pageSize={Number(dailyPagination.limit || 50)}
+                                total={Number(dailyPagination.total || 0)}
+                                showSizeChanger={false}
+                                onChange={setControlPage}
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </section>
+                    ),
+                  },
+                ]
+              : []),
             ...(canApprove
               ? [
                   {
@@ -448,7 +835,7 @@ function CashPage() {
                 ))}
                 {!recentClosures.length ? (
                   <tr>
-                    <td className="table-empty" colSpan={7}>
+                    <td className="table-empty" colSpan={10}>
                       Kassa tarixi yo'q
                     </td>
                   </tr>
@@ -472,6 +859,19 @@ function CashPage() {
         rootClassName="employee-modal-theme cash-modal-theme"
       >
         <Form form={form} layout="vertical" onFinish={submitClose}>
+          <div className="cash-close-breakdown">
+            <div><span>Naqd</span><b>{formatMoney(totals.naqd)} so'm</b></div>
+            <div><span>Karta</span><b>{formatMoney(totals.karta)} so'm</b></div>
+            <div><span>Click</span><b>{formatMoney(totals.click)} so'm</b></div>
+            <div><span>Bank</span><b>{formatMoney(totals.bank)} so'm</b></div>
+            <div className="cash-close-total">
+              <span>Jami topshiriladi</span><b>{formatMoney(totals.total)} so'm</b>
+            </div>
+          </div>
+          <p className="cash-close-help">
+            Karta, Click va bank summalari avtomatik topshiriladi. Faqat qo'lingizdagi
+            real naqd pulni sanab kiriting.
+          </p>
           <Form.Item
             name="countedCash"
             label="Sanalgan naqd pul"
@@ -526,43 +926,47 @@ function CashPage() {
               {formatMoney(paymentGuest?.debtAmount)} so'm
             </span>
           </div>
-          <Form.Item
-            name="amount"
-            label="Summa"
-            rules={[
-              { required: true, message: "Summa majburiy" },
-              { type: "number", min: 1, message: "Eng kamida 1 so'm" },
-            ]}
+          <div className="cash-split-payment-grid">
+            {[
+              ["naqd", "Naqd"],
+              ["karta", "Karta"],
+              ["click", "Click"],
+              ["bank", "Bank"],
+            ].map(([type, label]) => (
+              <Form.Item key={type} name={["payments", type]} label={label}>
+                <InputNumber
+                  min={0}
+                  max={Number(paymentGuest?.debtAmount || 0)}
+                  precision={0}
+                  style={{ width: "100%" }}
+                  formatter={(value) =>
+                    String(value || "").replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+                  }
+                  parser={(value) => String(value || "").replace(/[^\d]/g, "")}
+                  onKeyDown={blockNonIntegerKeys}
+                  onPaste={preventInvalidAmountPaste}
+                />
+              </Form.Item>
+            ))}
+          </div>
+          <div
+            className={`cash-split-total ${
+              splitPaymentTotal > Number(paymentGuest?.debtAmount || 0)
+                ? "cash-split-total-error"
+                : ""
+            }`}
           >
-            <InputNumber
-              min={1}
-              max={Number(paymentGuest?.debtAmount || 0)}
-              precision={0}
-              style={{ width: "100%" }}
-              formatter={(value) =>
-                String(value || "").replace(/\B(?=(\d{3})+(?!\d))/g, " ")
-              }
-              parser={(value) => String(value || "").replace(/[^\d]/g, "")}
-              onKeyDown={blockNonIntegerKeys}
-              onPaste={preventInvalidAmountPaste}
-            />
-          </Form.Item>
-          <Form.Item
-            name="type"
-            label="To'lov turi"
-            rules={[{ required: true, message: "To'lov turini tanlang" }]}
-          >
-            <Segmented
-              block
-              className="payment-type-segmented cash-payment-segmented"
-              options={[
-                { label: "Naqd", value: "naqd" },
-                { label: "Karta", value: "karta" },
-                { label: "Click", value: "click" },
-                { label: "Bank", value: "bank" },
-              ]}
-            />
-          </Form.Item>
+            <span>Jami to'lov</span>
+            <b>{formatMoney(splitPaymentTotal)} so'm</b>
+            <small>
+              To'lovdan keyingi qarz: {formatMoney(
+                Math.max(
+                  Number(paymentGuest?.debtAmount || 0) - splitPaymentTotal,
+                  0,
+                ),
+              )} so'm
+            </small>
+          </div>
           <Form.Item name="note" label="Izoh">
             <Input.TextArea rows={3} maxLength={500} />
           </Form.Item>

@@ -28,6 +28,10 @@ import {
 import PageLoader from "../components/PageLoader";
 
 const formatMoney = (value) => Number(value || 0).toLocaleString();
+const formatDateTime = (value) => {
+  const date = dayjs(value);
+  return date.isValid() ? date.format("DD-MM-YYYY HH:mm") : "-";
+};
 const paymentTypeOptions = [
   { label: "Naqd", value: "naqd" },
   { label: "Karta", value: "karta" },
@@ -389,7 +393,7 @@ function ExpensesPage() {
                       </td>
                       <td data-label="Summasi">{formatMoney(expense.amount)} so'm</td>
                       <td data-label="Sana">
-                        {new Date(expense.spentAt).toLocaleString()}
+                        {formatDateTime(expense.spentAt)}
                       </td>
                       <td data-label="Kiritgan xodim">
                         {formatCreatedBy(expense.createdBy)}

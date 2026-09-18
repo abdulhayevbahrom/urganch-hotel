@@ -218,7 +218,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["GroupBooking", "Guest", "Dashboard"],
+      invalidatesTags: ["GroupBooking", "Guest", "Dashboard", "Cash"],
     }),
     updateGuest: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -234,7 +234,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Guest", "Dashboard"],
+      invalidatesTags: ["Guest", "Dashboard", "Cash"],
     }),
     updateGuestPayment: builder.mutation({
       query: ({ id, paymentIndex, ...body }) => ({
@@ -242,7 +242,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["Guest", "Dashboard"],
+      invalidatesTags: ["Guest", "Dashboard", "Cash"],
     }),
     checkoutGuest: builder.mutation({
       query: (id) => ({
@@ -328,7 +328,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["HallBooking", "Cash"],
+      invalidatesTags: ["HallBooking"],
     }),
     updateHallBooking: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -336,7 +336,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["HallBooking"],
+      invalidatesTags: ["HallBooking", "Cash"],
     }),
     addHallBookingPayment: builder.mutation({
       query: ({ id, ...body }) => ({
@@ -344,7 +344,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["HallBooking"],
+      invalidatesTags: ["HallBooking", "Cash"],
     }),
     cancelHallBooking: builder.mutation({
       query: (id) => ({
@@ -381,7 +381,20 @@ export const employeeApi = apiSlice.injectEndpoints({
       providesTags: ["Dashboard"],
     }),
     getCashSummary: builder.query({
-      query: () => "/cash",
+      query: ({ page = 1, limit = 50 } = {}) =>
+        `/cash?page=${encodeURIComponent(page)}&limit=${encodeURIComponent(limit)}`,
+      providesTags: ["Cash"],
+    }),
+    getDailyCashControl: builder.query({
+      query: ({ date, cashierId = "", page = 1, limit = 50 }) => {
+        const search = new URLSearchParams({
+          date: String(date),
+          page: String(page),
+          limit: String(limit),
+        });
+        if (cashierId) search.set("cashierId", String(cashierId));
+        return `/cash/daily-control?${search.toString()}`;
+      },
       providesTags: ["Cash"],
     }),
     closeCash: builder.mutation({
@@ -401,11 +414,12 @@ export const employeeApi = apiSlice.injectEndpoints({
       invalidatesTags: ["Cash"],
     }),
     getReportsSummary: builder.query({
-      query: (month) => {
-        const value = String(month || "").trim();
-        return value
-          ? `/reports-summary?month=${encodeURIComponent(value)}`
-          : "/reports-summary";
+      query: ({ from, to } = {}) => {
+        const search = new URLSearchParams();
+        if (from) search.set("from", String(from));
+        if (to) search.set("to", String(to));
+        const query = search.toString();
+        return query ? `/reports-summary?${query}` : "/reports-summary";
       },
     }),
     getDailyReport: builder.query({
@@ -519,6 +533,7 @@ export const {
   useGetExpensesQuery,
   useGetDashboardSummaryQuery,
   useGetCashSummaryQuery,
+  useGetDailyCashControlQuery,
   useCloseCashMutation,
   useDecideCashClosureMutation,
   useGetReportsSummaryQuery,

@@ -9,11 +9,9 @@ import {
   FiBarChart2,
   FiClipboard,
   FiDollarSign,
-  FiFileText,
   FiGrid,
   FiPrinter,
   FiShield,
-  FiStar,
   FiUsers,
 } from "react-icons/fi";
 import PageLoader from "../components/PageLoader";
@@ -57,10 +55,9 @@ const REPORT_DESTINATIONS = {
 };
 
 const HIGHLIGHT_DESTINATIONS = {
-  "To'lovlar markazi": "/guests-history",
-  "Sof natija": "/expenses",
-  "Qarzdor nazorati": "/guests-debtors",
-  "Xizmatlar oqimi": "/services",
+  "Umumiy balans": "/guests-history",
+  "To'langan": "/guests-history",
+  Qarzdorlik: "/guests-debtors",
 };
 
 const createNavigateProps = (navigate, path, label) => ({
@@ -144,7 +141,7 @@ const reportGroups = [
       {
         key: "guests.guestFlow",
         title: "Kelgan va ketgan mijozlar",
-        text: "Tanlangan oyda nechta mijoz kelgani va nechta mijoz ketganini ko'rsatadi.",
+        text: "Tanlangan oraliqda nechta mijoz kelgani va nechta mijoz ketganini ko'rsatadi.",
       },
       {
         key: "guests.debtAging",
@@ -198,7 +195,7 @@ const getReportMetric = (key, sections = {}) => {
       return {
         value: `${Number(finance?.paymentRegistry?.count || 0)} ta`,
         detail: `${formatCompactMoney(finance?.paymentRegistry?.totalAmount)} so'm`,
-        meta: "Oy davomida qilingan to'lovlar",
+        meta: "Tanlangan oraliqda qilingan to'lovlar",
       };
     case "finance.roomRevenue":
       return {
@@ -236,7 +233,7 @@ const getReportMetric = (key, sections = {}) => {
     case "operations.bookings":
       return {
         value: `${Number(operations?.bookings?.count || 0)} ta`,
-        detail: "Tanlangan oy uchun bronlar",
+        detail: "Tanlangan oraliq uchun bronlar",
         meta: "Oldindan band qilingan xonalar",
       };
     case "operations.checkoutDelays":
@@ -255,7 +252,7 @@ const getReportMetric = (key, sections = {}) => {
       return {
         value: `${Number(guests?.guestFlow?.arrived || 0)} / ${Number(guests?.guestFlow?.left || 0)}`,
         detail: "Kelgan / ketgan mijozlar",
-        meta: "Oy ichidagi mijozlar harakati",
+        meta: "Tanlangan oraliqdagi mijozlar harakati",
       };
     case "guests.debtAging":
       return {
@@ -305,9 +302,11 @@ const getReportMetric = (key, sections = {}) => {
 function ReportsPage() {
   const navigate = useNavigate();
   const dailyReportRef = useRef(null);
-  const [selectedMonth, setSelectedMonth] = useState(() =>
+  const [reportRange, setReportRange] = useState(() => [
     dayjs().startOf("month"),
-  );
+    dayjs().endOf("month"),
+  ]);
+  const [activePreset, setActivePreset] = useState("");
   const [dailyReportDate, setDailyReportDate] = useState(() => dayjs());
   const [activeTab, setActiveTab] = useState("summary");
   const { data: settingsData } = useGetSettingsQuery();
@@ -315,10 +314,11 @@ function ReportsPage() {
     settingsData?.innerData?.hotelName ||
     localStorage.getItem("hotelName") ||
     "Mehmonxona nomi";
-  const monthKey = selectedMonth.format("YYYY-MM");
+  const reportFrom = reportRange[0].format("YYYY-MM-DD");
+  const reportTo = reportRange[1].format("YYYY-MM-DD");
 
   const { data, isLoading, isFetching, error } = useGetReportsSummaryQuery(
-    monthKey,
+    { from: reportFrom, to: reportTo },
     {
       refetchOnFocus: true,
       refetchOnReconnect: true,
@@ -337,45 +337,69 @@ function ReportsPage() {
   const dailyGuestRows = dailyReport?.guests || [];
   const dailyExpenses = dailyReport?.expenses?.items || [];
 
-  const quickHighlights = useMemo(
-    () => [
+  const quickHighlights = useMemo(() => {
+    const paid = Number(sections?.finance?.paymentRegistry?.totalAmount || 0);
+    const debt = Number(sections?.guests?.debtAging?.totalDebt || 0);
+    return [
       {
-        title: "To'lovlar markazi",
+        title: "Umumiy balans",
+        text: "To'langan va to'lanishi kerak bo'lgan jami summa",
+        value: `${formatCompactMoney(paid + debt)} so'm`,
+        icon: FiDollarSign,
+      },
+      {
+        title: "To'langan",
         text: `${Number(sections?.finance?.paymentRegistry?.count || 0)} ta to'lov`,
-        value: `${formatCompactMoney(sections?.finance?.paymentRegistry?.totalAmount)} so'm`,
+        value: `${formatCompactMoney(paid)} so'm`,
         icon: FiBarChart2,
       },
       {
-        title: "Sof natija",
-        text:
-          Number(sections?.finance?.profitLoss?.net || 0) >= 0
-            ? "Oy yakuni foydada"
-            : "Oy yakuni zararda",
-        value: `${formatCompactMoney(sections?.finance?.profitLoss?.net)} so'm`,
-        icon: FiFileText,
-      },
-      {
-        title: "Qarzdor nazorati",
-        text: `${Number(sections?.guests?.debtAging?.over7Days || 0)} ta eski qarz`,
-        value: `${formatCompactMoney(sections?.guests?.debtAging?.totalDebt)} so'm`,
+        title: "Qarzdorlik",
+        text: `${Number(sections?.guests?.debtAging?.count || 0)} ta qarzdor mijoz`,
+        value: `${formatCompactMoney(debt)} so'm`,
         icon: FiShield,
       },
-      {
-        title: "Xizmatlar oqimi",
-        text: `${Number(sections?.extra?.servicesRevenue?.activeServices || 0)} ta xizmat turi`,
-        value: `${formatCompactMoney(sections?.extra?.servicesRevenue?.totalAmount)} so'm`,
-        icon: FiStar,
-      },
-    ],
-    [sections],
-  );
+    ];
+  }, [sections]);
 
-  const onMonthChange = (value) => {
-    if (!value) {
-      setSelectedMonth(dayjs().startOf("month"));
+  const paymentMethodCards = useMemo(() => {
+    const total = Number(sections?.finance?.paymentRegistry?.totalAmount || 0);
+    const methods = sections?.finance?.paymentMethods || {};
+    const makeItem = (key, title, amount) => ({
+      key,
+      title,
+      amount: Number(amount || 0),
+      percent: total > 0 ? (Number(amount || 0) / total) * 100 : 0,
+    });
+    return [
+      makeItem("cash", "Naqd", methods.cash),
+      makeItem("plastic", "Plastik karta", methods.card),
+      makeItem("click", "Click", methods.click),
+      makeItem("transfer", "Bank o'tkazmasi", methods.transfer),
+    ];
+  }, [sections]);
+
+  const onReportRangeChange = (value) => {
+    if (!value?.[0] || !value?.[1]) return;
+    setActivePreset("");
+    setReportRange([value[0].startOf("day"), value[1].endOf("day")]);
+  };
+
+  const selectPresetRange = (months) => {
+    const currentMonth = dayjs();
+    setActivePreset(String(months));
+    if (months === 12) {
+      setReportRange([
+        currentMonth.startOf("year"),
+        currentMonth.endOf("year"),
+      ]);
       return;
     }
-    setSelectedMonth(value.startOf("month"));
+
+    setReportRange([
+      currentMonth.subtract(months - 1, "month").startOf("month"),
+      currentMonth.endOf("month"),
+    ]);
   };
 
   const formatRoomLabel = (guest) => {
@@ -411,58 +435,100 @@ function ReportsPage() {
       <div className="page-card reports-shell">
         <section className="reports-hero">
           <div className="reports-hero-copy">
-            <div className="reports-eyebrow">Hisobotlar markazi</div>
-            <div className="reports-hero-head">
-              <div>
-                <h2>Mehmonxona bo'yicha batafsil ko'rsatkichlar</h2>
-                <p>
-                  Bu yerda pul tushumi, xarajatlar, bronlar va mijozlar holati
-                  bitta sahifada sodda ko'rinishda chiqadi.
-                </p>
+            <div className="reports-hero-actions">
+              <div
+                className="reports-range-presets"
+                aria-label="Tezkor hisobot davrlari"
+              >
+                <Button
+                  className={activePreset === "3" ? "is-active" : ""}
+                  disabled={isFetching}
+                  onClick={() => selectPresetRange(3)}
+                >
+                  3 oylik
+                </Button>
+                <Button
+                  className={activePreset === "6" ? "is-active" : ""}
+                  disabled={isFetching}
+                  onClick={() => selectPresetRange(6)}
+                >
+                  6 oylik
+                </Button>
+                <Button
+                  className={activePreset === "9" ? "is-active" : ""}
+                  disabled={isFetching}
+                  onClick={() => selectPresetRange(9)}
+                >
+                  9 oylik
+                </Button>
+                <Button
+                  className={activePreset === "12" ? "is-active" : ""}
+                  disabled={isFetching}
+                  onClick={() => selectPresetRange(12)}
+                >
+                  Yillik
+                </Button>
               </div>
-
-              <div className="reports-hero-actions">
-                <DatePicker
-                  picker="month"
-                  allowClear={false}
-                  value={selectedMonth}
-                  onChange={onMonthChange}
-                  format="MMMM YYYY"
-                  className="reports-month-picker"
-                />
-                <div className="reports-generated-at">
-                  <span>Tanlangan oy</span>
-                  <strong>{reportData?.month || monthKey}</strong>
-                </div>
-              </div>
+              <DatePicker.RangePicker
+                allowClear={false}
+                value={reportRange}
+                onChange={onReportRangeChange}
+                format="DD.MM.YYYY"
+                className="reports-range-picker"
+              />
             </div>
           </div>
 
-          <div className="reports-highlights">
-            {quickHighlights.map((item) => {
-              const Icon = item.icon;
-              const destination =
-                HIGHLIGHT_DESTINATIONS[item.title] || "/reports";
-              return (
-                <article
-                  key={item.title}
-                  className="reports-highlight-card reports-clickable-card"
-                  {...createNavigateProps(
-                    navigate,
-                    destination,
-                    `${item.title} bo'limini ochish`,
-                  )}
-                >
-                  <span className="reports-highlight-icon">
-                    <Icon size={16} />
-                  </span>
-                  <strong>{item.title}</strong>
-                  <div className="reports-highlight-value">{item.value}</div>
-                  <p>{item.text}</p>
-                </article>
-              );
-            })}
-          </div>
+          <Spin spinning={isFetching} tip="Hisobot yangilanmoqda...">
+            <div className="reports-overview-cards">
+              <div className="reports-highlights">
+                {quickHighlights.map((item, index) => {
+                  const Icon = item.icon;
+                  const destination =
+                    HIGHLIGHT_DESTINATIONS[item.title] || "/reports";
+                  return (
+                    <article
+                      key={item.title}
+                      className={`reports-highlight-card reports-highlight-card-${index + 1} reports-clickable-card`}
+                      {...createNavigateProps(
+                        navigate,
+                        destination,
+                        `${item.title} bo'limini ochish`,
+                      )}
+                    >
+                      <span className="reports-highlight-icon">
+                        <Icon size={16} />
+                      </span>
+                      <strong>{item.title}</strong>
+                      <div className="reports-highlight-value">
+                        {item.value}
+                      </div>
+                      <p>{item.text}</p>
+                    </article>
+                  );
+                })}
+              </div>
+              <div className="reports-payment-methods">
+                {paymentMethodCards.map((method) => (
+                  <article
+                    key={method.key}
+                    className={`reports-payment-method-card reports-payment-method-${method.key}`}
+                  >
+                    <div>
+                      <strong>{method.title}</strong>
+                      <span>{method.percent.toFixed(1)}%</span>
+                    </div>
+                    <b>{formatMoney(method.amount)} so'm</b>
+                    <div className="reports-payment-method-progress">
+                      <i
+                        style={{ width: `${Math.min(method.percent, 100)}%` }}
+                      />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </Spin>
         </section>
 
         {error ? (
@@ -612,13 +678,12 @@ function ReportsPage() {
                     <div className="daily-report-preview-wrap">
                       <div ref={dailyReportRef} className="daily-report-sheet">
                         <header className="daily-report-excel-head">
-                          <strong>О Т Ч Е Т</strong>
+                          <strong>H I S O B O T</strong>
                           <span>
-                            наличные проживания в гостинице "{hotelName}"
+                            "{hotelName}" mehmonxonasida yashash bo'yicha kunlik
+                            hisobot
                           </span>
-                          <em>
-                            " {dailyReportDate.format("DD")} " {dailyReportDate.format("MMMM YYYY")}г.
-                          </em>
+                          <em>{dailyReportDate.format("DD MMMM YYYY")}</em>
                         </header>
 
                         <section className="daily-report-section">
@@ -635,6 +700,7 @@ function ReportsPage() {
                               <col className="report-col-daily" />
                               <col className="report-col-cash" />
                               <col className="report-col-card" />
+                              <col className="report-col-click" />
                               <col className="report-col-transfer" />
                               <col className="report-col-total" />
                               <col className="report-col-name" />
@@ -644,22 +710,23 @@ function ReportsPage() {
                             </colgroup>
                             <thead>
                               <tr>
-                                <th rowSpan={2}>Предоплата</th>
-                                <th rowSpan={2}>Задолженность</th>
-                                <th rowSpan={2}>№ комнаты</th>
-                                <th rowSpan={2}>Кол-во чел.</th>
-                                <th rowSpan={2}>Оплата за сутки</th>
-                                <th colSpan={3}>Оплата наличными</th>
-                                <th rowSpan={2}>Всего</th>
-                                <th rowSpan={2}>ФИО</th>
+                                <th rowSpan={2}>Oldindan to'lov</th>
+                                <th rowSpan={2}>Oldingi qarz</th>
+                                <th rowSpan={2}>Xona №</th>
+                                <th rowSpan={2}>Mijozlar soni</th>
+                                <th rowSpan={2}>Bir kunlik to'lov</th>
+                                <th colSpan={4}>To'lov usullari</th>
+                                <th rowSpan={2}>Jami</th>
+                                <th rowSpan={2}>F.I.Sh.</th>
                                 <th rowSpan={2}>Tashkilot / INN</th>
-                                <th rowSpan={2}>Предоплата</th>
-                                <th rowSpan={2}>Задолженность</th>
+                                <th rowSpan={2}>Oldindan to'lov</th>
+                                <th rowSpan={2}>Joriy qarzdorlik</th>
                               </tr>
                               <tr>
-                                <th>Наличия</th>
-                                <th>Пластиковая карта</th>
-                                <th>Банковский перевод</th>
+                                <th>Naqd</th>
+                                <th>Plastik karta</th>
+                                <th>Click</th>
+                                <th>Bank o'tkazmasi</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -667,32 +734,64 @@ function ReportsPage() {
                                 <tr
                                   key={`${guest.roomNumber}-${guest.fullName}-${index}`}
                                 >
-                                  <td>{formatMoney(guest.openingPrepayment)}</td>
+                                  <td>
+                                    {formatMoney(guest.openingPrepayment)}
+                                  </td>
                                   <td>{formatMoney(guest.openingDebt)}</td>
                                   <td>{formatRoomLabel(guest)}</td>
                                   <td>{guest.guestCount}</td>
-                                  <td>{formatMoney(guest.dailyRate)}</td>
+                                  <td>
+                                    <div className="daily-report-rate-cell">
+                                      <strong>
+                                        1 x{" "}
+                                        {formatMoney(
+                                          Number(guest.dailyRate || 0) /
+                                            Math.max(
+                                              Number(guest.guestCount || 1),
+                                              1,
+                                            ),
+                                        )}
+                                      </strong>
+                                      <span>
+                                        Jami: {formatMoney(guest.dailyRate)}
+                                      </span>
+                                    </div>
+                                  </td>
                                   <td>{formatMoney(guest.cash)}</td>
                                   <td>{formatMoney(guest.card)}</td>
+                                  <td>{formatMoney(guest.click)}</td>
                                   <td>{formatMoney(guest.transfer)}</td>
-                                  <td>{formatMoney((guest.cash || 0) + (guest.card || 0) + (guest.transfer || 0))}</td>
+                                  <td>
+                                    {formatMoney(
+                                      (guest.cash || 0) +
+                                        (guest.card || 0) +
+                                        (guest.click || 0) +
+                                        (guest.transfer || 0),
+                                    )}
+                                  </td>
                                   <td>{guest.fullName}</td>
                                   <td>
                                     <div className="daily-report-org-cell">
-                                      <strong>{guest.organization || "-"}</strong>
+                                      <strong>
+                                        {guest.organization || "-"}
+                                      </strong>
                                       {guest.organizationInn ? (
-                                        <span>INN: {guest.organizationInn}</span>
+                                        <span>
+                                          INN: {guest.organizationInn}
+                                        </span>
                                       ) : null}
                                     </div>
                                   </td>
-                                  <td>{formatMoney(guest.closingPrepayment)}</td>
+                                  <td>
+                                    {formatMoney(guest.closingPrepayment)}
+                                  </td>
                                   <td>{formatMoney(guest.closingDebt)}</td>
                                 </tr>
                               ))}
                               {!dailyGuestRows.length ? (
                                 <tr>
                                   <td
-                                    colSpan={13}
+                                    colSpan={14}
                                     style={{ textAlign: "center" }}
                                   >
                                     Aktiv mijozlar topilmadi
@@ -701,19 +800,117 @@ function ReportsPage() {
                               ) : null}
                               {dailyGuestRows.length ? (
                                 <tr className="daily-report-total-row">
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.openingPrepayment || 0), 0))}</td>
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.openingDebt || 0), 0))}</td>
-                                  <td>Всего</td>
-                                  <td>{dailyGuestRows.reduce((sum, row) => sum + Number(row.guestCount || 0), 0)}</td>
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.dailyRate || 0), 0))}</td>
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.cash || 0), 0))}</td>
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.card || 0), 0))}</td>
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.transfer || 0), 0))}</td>
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.cash || 0) + Number(row.card || 0) + Number(row.transfer || 0), 0))}</td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum +
+                                          Number(row.openingPrepayment || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum + Number(row.openingDebt || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
+                                  <td>Jami</td>
+                                  <td>
+                                    {dailyGuestRows.reduce(
+                                      (sum, row) =>
+                                        sum + Number(row.guestCount || 0),
+                                      0,
+                                    )}
+                                  </td>
+                                  <td>
+                                    <div className="daily-report-rate-cell">
+                                      <strong>Jami kunlik</strong>
+                                      <span>
+                                        {formatMoney(
+                                          dailyGuestRows.reduce(
+                                            (sum, row) =>
+                                              sum + Number(row.dailyRate || 0),
+                                            0,
+                                          ),
+                                        )}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum + Number(row.cash || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum + Number(row.card || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum + Number(row.click || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum + Number(row.transfer || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum +
+                                          Number(row.cash || 0) +
+                                          Number(row.card || 0) +
+                                          Number(row.click || 0) +
+                                          Number(row.transfer || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
                                   <td />
                                   <td />
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.closingPrepayment || 0), 0))}</td>
-                                  <td>{formatMoney(dailyGuestRows.reduce((sum, row) => sum + Number(row.closingDebt || 0), 0))}</td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum +
+                                          Number(row.closingPrepayment || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
+                                  <td>
+                                    {formatMoney(
+                                      dailyGuestRows.reduce(
+                                        (sum, row) =>
+                                          sum + Number(row.closingDebt || 0),
+                                        0,
+                                      ),
+                                    )}
+                                  </td>
                                 </tr>
                               ) : null}
                             </tbody>
@@ -737,14 +934,16 @@ function ReportsPage() {
                               <tr>
                                 <th>Nomi</th>
                                 <th>Kategoriya</th>
-                                <th>To'lov turi</th>
+                                <th>To'lov usuli</th>
                                 <th>Summa</th>
                                 <th>Izoh</th>
                               </tr>
                             </thead>
                             <tbody>
                               {dailyExpenses.map((expense, index) => (
-                                <tr key={`${expense.title}-${expense.category}-${index}`}>
+                                <tr
+                                  key={`${expense.title}-${expense.category}-${index}`}
+                                >
                                   <td>{expense.title || "-"}</td>
                                   <td>{expense.category || "-"}</td>
                                   <td>{expense.paymentType || "-"}</td>
@@ -786,26 +985,17 @@ function ReportsPage() {
                         <section className="daily-report-section daily-report-summary-grid">
                           <div className="daily-report-rows">
                             <div className="daily-report-rows-primary">
-                              <div
-                                className="daily-report-prepayment-card"
-                                style={{
-                                  padding: "10px 12px",
-                                  borderRadius: "12px",
-                                  minHeight: "72px",
-                                }}
-                              >
-                                <span>Predoplata</span>
-                                <b style={{ fontSize: "18px", lineHeight: 1.1 }}>
-                                  {formatMoney(
-                                    dailyGuestRows.reduce(
-                                      (sum, row) =>
-                                        sum + Number(row.closingPrepayment || 0),
-                                      0,
-                                    ),
-                                  )}{" "}
-                                  so'm
-                                </b>
-                              </div>
+                              <span>Jami oldindan to'lov</span>
+                              <b>
+                                {formatMoney(
+                                  dailyGuestRows.reduce(
+                                    (sum, row) =>
+                                      sum + Number(row.closingPrepayment || 0),
+                                    0,
+                                  ),
+                                )}{" "}
+                                so'm
+                              </b>
                             </div>
                             <div>
                               <span>Jami aktiv xonalar</span>
@@ -835,25 +1025,8 @@ function ReportsPage() {
                                 {formatMoney(dailyReport?.debt?.total)} so'm
                               </b>
                             </div>
-                            <div>
-                              <span>Chop etilgan vaqt</span>
-                              <b>{dayjs().format("DD.MM.YYYY HH:mm")}</b>
-                            </div>
-                            <div>
-                              <span>Sana</span>
-                              <b>{dailyReportDate.format("DD.MM.YYYY")}</b>
-                            </div>
                           </div>
                         </section>
-
-                        <footer className="daily-report-footer">
-                          <span>
-                            Tayyorladi: Administrator __________________
-                          </span>
-                          <span>
-                            Chop etildi: {dayjs().format("DD.MM.YYYY HH:mm")}
-                          </span>
-                        </footer>
                       </div>
                     </div>
                   </Spin>
