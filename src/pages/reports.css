@@ -303,6 +303,11 @@
   white-space: nowrap;
   overflow-wrap: normal;
 }
+.daily-report-guest-table td.daily-report-guest-name {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .daily-report-guest-table th:nth-child(1), .daily-report-guest-table td:nth-child(1) { width: 7%; }
 .daily-report-guest-table th:nth-child(2), .daily-report-guest-table td:nth-child(2) { width: 7%; }
 .daily-report-guest-table th:nth-child(3), .daily-report-guest-table td:nth-child(3) { width: 8%; }

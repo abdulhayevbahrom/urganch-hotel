@@ -769,7 +769,7 @@ function ReportsPage() {
                                         (guest.transfer || 0),
                                     )}
                                   </td>
-                                  <td>{guest.fullName}</td>
+                                  <td className="daily-report-guest-name">{guest.fullName}</td>
                                   <td>
                                     <div className="daily-report-org-cell">
                                       <strong>
