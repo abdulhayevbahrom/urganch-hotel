@@ -174,7 +174,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Guest", "Room", "Dashboard"],
+      invalidatesTags: ["Guest", "Room", "Dashboard", "Cash"],
     }),
     createGuestsBulk: builder.mutation({
       query: (body) => ({
@@ -182,7 +182,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Guest", "Room", "Dashboard"],
+      invalidatesTags: ["Guest", "Room", "Dashboard", "Cash"],
     }),
     getGroupBookings: builder.query({
       query: ({ tab = "active", page = 1, limit = 20 } = {}) =>
@@ -328,7 +328,7 @@ export const employeeApi = apiSlice.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["HallBooking"],
+      invalidatesTags: ["HallBooking", "Cash"],
     }),
     updateHallBooking: builder.mutation({
       query: ({ id, ...body }) => ({
