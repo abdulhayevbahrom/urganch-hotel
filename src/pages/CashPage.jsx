@@ -493,6 +493,7 @@ function CashPage() {
                   <th>Sana</th>
                   <th>Manba</th>
                   <th>Nomi</th>
+                  <th>Xona raqami</th>
                   <th>To'lov turi</th>
                   <th>Summa</th>
                   <th>Kassir</th>
@@ -507,6 +508,7 @@ function CashPage() {
                       {sourceTypeLabel[item.sourceType] || item.sourceType}
                     </td>
                     <td data-label="Nomi">{item.title}</td>
+                    <td data-label="Xona raqami">{item.roomNumber ?? "-"}</td>
                     <td data-label="To'lov turi">
                       {paymentTypeLabel[item.paymentType] || item.paymentType}
                     </td>
@@ -519,7 +521,7 @@ function CashPage() {
                 ))}
                 {!transactions.length ? (
                   <tr>
-                    <td className="table-empty" colSpan={7}>
+                    <td className="table-empty" colSpan={8}>
                       Ochiq to'lovlar yo'q
                     </td>
                   </tr>
